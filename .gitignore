@@ -1,0 +1,21 @@
+# Large data files
+*.bam
+*.bai
+*.bam.bai
+
+# Output files
+*.bed
+*.txt
+*.tsv
+*.csv
+
+# Python
+*.pyc
+__pycache__/
+.ipynb_checkpoints/
+
+# Mac
+.DS_Store
+
+# Conda
+.conda/
