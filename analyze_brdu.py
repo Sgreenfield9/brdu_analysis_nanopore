@@ -8,13 +8,78 @@ def phred_to_prob(phred_score):
     return 1 - 10**(-phred_score / 10)
 
 
-def count_mod(bam_file, probability_threshold):
+def parse_dnascent_mm_ml(mm_tag, ml_tag, mod_type='b'):
     """
-    Count number of T bases with BrdU probability >= threshold
+    Parse DNAscent MM and ML tags to extract modification data for specific type
+    
+    Args:
+        mm_tag: MM tag string (e.g., "N+b?,1,2,3;N+e?,4,5,6")
+        ml_tag: ML tag array
+        mod_type: 'b' for BrdU or 'e' for EdU
+    
+    Returns:
+        (skips, scores) tuple or (None, None) if not found
+    """
+    # Split by semicolon to handle multiple modification types
+    mod_sections = mm_tag.split(';')
+    
+    target_prefix = f"N+{mod_type}?"
+    
+    # Track which section we want and where it is
+    section_idx = -1
+    skips = None
+    
+    for idx, section in enumerate(mod_sections):
+        if section.strip().startswith(target_prefix):
+            section_idx = idx
+            parts = section.split(',')
+            if len(parts) < 2:
+                return None, None
+            try:
+                skips = [int(x) for x in parts[1:]]
+            except ValueError:
+                return None, None
+            break
+    
+    if skips is None:
+        return None, None
+    
+    # ML tag contains scores for all modification types concatenated
+    # We need to figure out which scores belong to our modification type
+    # Parse all sections to know how many scores each has
+    all_skip_counts = []
+    for section in mod_sections:
+        if not section.strip():
+            continue
+        parts = section.split(',')
+        if len(parts) >= 2:
+            try:
+                section_skips = [int(x) for x in parts[1:]]
+                all_skip_counts.append(len(section_skips))
+            except ValueError:
+                all_skip_counts.append(0)
+    
+    # Calculate offset into ML array
+    ml_offset = sum(all_skip_counts[:section_idx])
+    ml_length = len(skips)
+    
+    # Extract the relevant ML scores
+    if ml_offset + ml_length <= len(ml_tag):
+        scores = ml_tag[ml_offset:ml_offset + ml_length]
+    else:
+        scores = ml_tag[ml_offset:]
+    
+    return skips, scores
+
+
+def count_mod(bam_file, probability_threshold, mod_type='b'):
+    """
+    Count number of T bases with modification probability >= threshold
     
     Args:
         bam_file: Path to mod.bam file
         probability_threshold: Minimum probability threshold (0-1)
+        mod_type: 'b' for BrdU or 'e' for EdU
     
     Returns:
         Dictionary with read_id as key and count as value
@@ -41,26 +106,29 @@ def count_mod(bam_file, probability_threshold):
             mm_tag = read.get_tag("MM")
             ml_tag = read.get_tag("ML")
             
-            # Check if this is T+E (BrdU) modification
-            if not mm_tag.startswith("T+E"):
+            # Parse DNAscent format
+            skips, scores = parse_dnascent_mm_ml(mm_tag, ml_tag, mod_type)
+            
+            if skips is None or scores is None:
                 results[read_id] = 0
                 continue
             
             # Count modifications above threshold
-            count = sum(1 for score in ml_tag if score >= phred_threshold)
+            count = sum(1 for score in scores if score >= phred_threshold)
             results[read_id] = count
     
     return results
 
 
-def sliding_window_mod_to_bed6(bam_file, probability_threshold, window_size):
+def sliding_window_mod_to_bed6(bam_file, probability_threshold, window_size, mod_type='b'):
     """
-    Calculate smoothed BrdU modification using sliding window and output as BED6
+    Calculate smoothed modification using sliding window and output as BED6
     
     Args:
         bam_file: Path to mod.bam file
         probability_threshold: Minimum probability threshold (0-1)
         window_size: Number of T bases in sliding window
+        mod_type: 'b' for BrdU or 'e' for EdU
     
     Returns:
         List of BED6 tuples: (chrom, start, end, name, score, strand)
@@ -79,7 +147,9 @@ def sliding_window_mod_to_bed6(bam_file, probability_threshold, window_size):
         for read in bam:
             read_id = read.query_name
             chrom = read.reference_name
-            ref_start = read.reference_start
+            
+            if chrom is None:
+                continue
             
             # Get strand
             if read.is_reverse:
@@ -94,17 +164,11 @@ def sliding_window_mod_to_bed6(bam_file, probability_threshold, window_size):
             mm_tag = read.get_tag("MM")
             ml_tag = read.get_tag("ML")
             
-            # Check if this is T+E (BrdU) modification
-            if not mm_tag.startswith("T+E"):
-                continue
+            # Parse DNAscent format
+            skips, scores = parse_dnascent_mm_ml(mm_tag, ml_tag, mod_type)
             
-            # Parse MM tag to get T positions
-            # Format: T+E?,skip1,skip2,skip3...
-            parts = mm_tag.split(',')
-            if len(parts) < 2:
+            if skips is None or scores is None:
                 continue
-            
-            skips = [int(x) for x in parts[1:]]
             
             # Find T positions in the sequence
             sequence = read.query_sequence
@@ -117,12 +181,14 @@ def sliding_window_mod_to_bed6(bam_file, probability_threshold, window_size):
             mod_data = []  # (query_pos, ref_pos, score)
             current_t_idx = 0
             
-            for skip, score in zip(skips, ml_tag):
+            # Compute reference positions ONCE per read
+            ref_positions = read.get_reference_positions()
+
+            for skip, score in zip(skips, scores):
                 current_t_idx += skip
                 if current_t_idx < len(t_positions):
                     query_pos = t_positions[current_t_idx]
-                    # Convert query position to reference position
-                    ref_pos = read.get_reference_positions()[query_pos] if query_pos < len(read.get_reference_positions()) else None
+                    ref_pos = ref_positions[query_pos] if query_pos < len(ref_positions) else None
                     if ref_pos is not None:
                         mod_data.append((query_pos, ref_pos, score))
                     current_t_idx += 1
@@ -158,10 +224,12 @@ def sliding_window_mod_to_bed6(bam_file, probability_threshold, window_size):
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Analyze BrdU modifications in mod.bam file")
-    parser.add_argument("--bam", required=True, help="Path to mod.bam file")
+    parser = argparse.ArgumentParser(description="Analyze BrdU/EdU modifications from DNAscent mod.bam file")
+    parser.add_argument("--bam", required=True, help="Path to DNAscent mod.bam file")
     parser.add_argument("--prob", type=float, required=True, 
-                        help="Probability threshold (0-1)")
+                        help="Probability threshold (0-1). DNAscent recommends 0.5")
+    parser.add_argument("--mod", choices=['b', 'e', 'brdu', 'edu'], default='b',
+                        help="Modification type: 'b'/'brdu' for BrdU, 'e'/'edu' for EdU (default: b)")
     parser.add_argument("--window", type=int, default=None,
                         help="Window size for sliding window analysis (number of T bases)")
     parser.add_argument("--output", default=None,
@@ -175,10 +243,14 @@ if __name__ == "__main__":
     if not 0 <= args.prob <= 1:
         raise ValueError("Probability must be between 0 and 1")
     
+    # Normalize mod type
+    mod_type = 'b' if args.mod in ['b', 'brdu'] else 'e'
+    mod_name = 'BrdU' if mod_type == 'b' else 'EdU'
+    
     if args.window is None:
         # Simple count mode
-        print(f"Counting T bases with BrdU probability >= {args.prob}")
-        results = count_mod(args.bam, args.prob)
+        print(f"Counting T bases with {mod_name} probability >= {args.prob}")
+        results = count_mod(args.bam, args.prob, mod_type)
         
         if args.output:
             with open(args.output, 'w') as f:
@@ -192,8 +264,8 @@ if __name__ == "__main__":
     
     else:
         # Sliding window mode
-        print(f"Calculating smoothed BrdU with window size {args.window} and threshold {args.prob}")
-        bed_entries = sliding_window_mod_to_bed6(args.bam, args.prob, args.window)
+        print(f"Calculating smoothed {mod_name} with window size {args.window} and threshold {args.prob}")
+        bed_entries = sliding_window_mod_to_bed6(args.bam, args.prob, args.window, mod_type)
         
         if args.format == 'bed6':
             # Output as BED6
