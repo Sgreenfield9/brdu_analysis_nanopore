@@ -11,46 +11,23 @@ def phred_to_prob(phred_score):
 def parse_dnascent_mm_ml(mm_tag, ml_tag, mod_type='b'):
     """
     Parse DNAscent MM and ML tags to extract modification data for specific type
-    
-    Args:
-        mm_tag: MM tag string (e.g., "N+b?,1,2,3;N+e?,4,5,6")
-        ml_tag: ML tag array
-        mod_type: 'b' for BrdU or 'e' for EdU
-    
-    Returns:
-        (skips, scores) tuple or (None, None) if not found
     """
-    # Split by semicolon to handle multiple modification types
-    mod_sections = mm_tag.split(';')
+    # Split and filter out empty sections immediately
+    mod_sections = [s.strip() for s in mm_tag.split(';') if s.strip()]
     
     target_prefix = f"N+{mod_type}?"
     
     # Track which section we want and where it is
     section_idx = -1
     skips = None
-    
-    for idx, section in enumerate(mod_sections):
-        if section.strip().startswith(target_prefix):
-            section_idx = idx
-            parts = section.split(',')
-            if len(parts) < 2:
-                return None, None
-            try:
-                skips = [int(x) for x in parts[1:]]
-            except ValueError:
-                return None, None
-            break
+
     
     if skips is None:
         return None, None
     
-    # ML tag contains scores for all modification types concatenated
-    # We need to figure out which scores belong to our modification type
-    # Parse all sections to know how many scores each has
+    # Parse all sections to know how  many scores each has
     all_skip_counts = []
     for section in mod_sections:
-        if not section.strip():
-            continue
         parts = section.split(',')
         if len(parts) >= 2:
             try:
@@ -58,7 +35,7 @@ def parse_dnascent_mm_ml(mm_tag, ml_tag, mod_type='b'):
                 all_skip_counts.append(len(section_skips))
             except ValueError:
                 all_skip_counts.append(0)
-    
+        
     # Calculate offset into ML array
     ml_offset = sum(all_skip_counts[:section_idx])
     ml_length = len(skips)
@@ -90,7 +67,8 @@ def count_mod(bam_file, probability_threshold, mod_type='b'):
     elif probability_threshold <= 0:
         phred_threshold = 0
     else:
-        phred_threshold = -10 * np.log10(1 - probability_threshold)
+        phred_threshold = int(np.floor(-10 * np.log10(1 - probability_threshold)))
+
     
     results = {}
     
