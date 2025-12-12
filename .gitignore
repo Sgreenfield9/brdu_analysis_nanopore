@@ -5,7 +5,7 @@
 
 # Output files
 *.bed
-*.txt
+.txt
 *.tsv
 *.csv
 
@@ -19,3 +19,11 @@ __pycache__/
 
 # Conda
 .conda/
+
+# Environments
+env/.env
+.venv
+
+# Ignore the Datasets
+data/M_Phase
+
