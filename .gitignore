@@ -23,7 +23,12 @@ __pycache__/
 # Environments
 env/.env
 .venv
+g4hunter_env
 
 # Ignore the Datasets
-data/M_Phase
+/data
+datasets
+
+# Ignore Python 2.7 
+Python-2.7.18.tgz
 
