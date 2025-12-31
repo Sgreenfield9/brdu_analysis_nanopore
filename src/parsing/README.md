@@ -20,4 +20,7 @@ python3 src/parsing/tRNA/tRNA_parser.py
 ### Transposable Elements
 Still working on this method 
 
+## Details
+More details about how these parsers work will be provided in a markdown under their designated directory. We will have a G4, TE (Transposable Elements), and tRNA directory each containing their parser. 
+
 
