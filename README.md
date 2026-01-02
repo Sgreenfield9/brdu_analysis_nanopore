@@ -65,6 +65,6 @@ This project uses publicly available genomic data from National Center for Biote
 
 Data was downloaded using the NCBI Datasets CLI, accessed December 2025.
 ### Biopython
-This project uses the Biopython tool to extract .GFF file embeddings for important genome features. The documentation can be found [here](https://biopython.org/). In this project we used version 1.86. 
+This project uses the Biopython tool to extract .GFF file embeddings for important genome features. It is also used to generate the genome diagrams. The documentation can be found [here](https://biopython.org/). In this project we used version 1.86. 
 ### G4 Hunter Tool 
 This project uses the G4 Hunter tool created by **AnimaTardeb** to extract G4 motifs from a .fasta file format. The latest version of this tool is found on [GitHub](https://github.com/AnimaTardeb/G4Hunter).
