@@ -36,3 +36,5 @@ Python-2.7.18.tgz
 GCF_000146045-Merged.txt
 GCF_000146045-W25-S1.5.txt
 
+# Ignore Results directory (Takes a lot of storage, 500mb limit on GitHub)
+results
