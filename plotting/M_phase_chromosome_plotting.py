@@ -206,6 +206,234 @@ def trim_horizontal_whitespace(img, thresh=0.985, pad_px=2):
     return img[:, c0:c1, :]
 
 
+def _binned_signal(x: np.ndarray, y: np.ndarray, chr_length: int, bin_size: int):
+    """
+    Bin signal into fixed genomic bins to avoid drawing millions of ruler lines.
+    Returns bin centers and binned values (mean).
+    """
+    if bin_size <= 0:
+        bin_size = 2500
+
+    edges = np.arange(0, chr_length + bin_size, bin_size, dtype=np.int64)
+    if edges.size < 2:
+        edges = np.array([0, chr_length], dtype=np.int64)
+
+    # assign each x to a bin
+    idx = np.clip(np.digitize(x, edges) - 1, 0, edges.size - 2)
+
+    sums = np.zeros(edges.size - 1, dtype=float)
+    counts = np.zeros(edges.size - 1, dtype=float)
+
+    # accumulate (mean)
+    np.add.at(sums, idx, y)
+    np.add.at(counts, idx, 1.0)
+
+    out = np.zeros_like(sums)
+    mask = counts > 0
+    out[mask] = sums[mask] / counts[mask]
+
+    centers = (edges[:-1] + edges[1:]) / 2.0
+    return centers, out
+
+
+def plot_stick_ruler(
+    ax,
+    chrom_df: pd.DataFrame,
+    x_col: str,
+    y_col: str,
+    chr_length: int,
+    subtel_size: int = SUBTEL_SIZE,
+    bin_size: int = 2500,
+    max_height: float = 1.0,
+    baseline_lw: float = 0.8,
+    stick_lw: float = 0.6,
+):
+    """
+    Draw a "ruler" made of vertical sticks whose height is proportional to signal intensity.
+    """
+    x = chrom_df[x_col].to_numpy(dtype=np.float64)
+    y = chrom_df[y_col].to_numpy(dtype=np.float64)
+
+    centers, binned = _binned_signal(x, y, chr_length=chr_length, bin_size=bin_size)
+
+    # Normalize to [0, max_height]
+    bmax = float(np.nanmax(binned)) if binned.size else 0.0
+    if bmax > 0:
+        h = (binned / bmax) * max_height
+    else:
+        h = np.zeros_like(binned)
+
+    # subtelomeres background (same as main plot)
+    ax.axvspan(0, subtel_size, alpha=0.2, color='red')
+    ax.axvspan(chr_length - subtel_size, chr_length, alpha=0.2, color='red')
+
+    # baseline + sticks
+    ax.axhline(0, linewidth=baseline_lw)
+    ax.vlines(centers, 0, h, linewidth=stick_lw)
+
+    # styling
+    ax.set_xlim(0, chr_length)
+    ax.set_ylim(-0.02, max_height * 1.05)
+    ax.set_yticks([])
+    ax.grid(True, axis="x", alpha=0.08)
+    ax.spines["left"].set_visible(False)
+    ax.spines["right"].set_visible(False)
+    ax.spines["top"].set_visible(False)
+
+    # keep x labels off here (only bottom plot controls them)
+    ax.tick_params(axis="x", which="both", labelbottom=False, bottom=False)
+
+    # small annotation of max (optional but useful)
+    ax.text(
+        0.995, 0.82, f"max={bmax:.2f}",
+        ha="right", va="center",
+        transform=ax.transAxes,
+        fontsize=8
+    )
+
+
+def plot_feature_track(
+    ax,
+    features_df: pd.DataFrame,
+    chr_length: int,
+    subtel_size: int = SUBTEL_SIZE,
+    color: str = "green",
+    box_y: float = 0.15,
+    box_h: float = 0.70,
+):
+    # subtelomeres background (same as main plot)
+    ax.axvspan(0, subtel_size, alpha=0.2, color='red')
+    ax.axvspan(chr_length - subtel_size, chr_length, alpha=0.2, color='red')
+
+    # baseline
+    ax.axhline(0, linewidth=0.8)
+
+    # draw features as visible ticks (vlines at midpoints) to avoid <1px rectangles collapsing
+    if len(features_df) > 0:
+        mids = ((features_df["start"].to_numpy(dtype=float) + features_df["end"].to_numpy(dtype=float)) / 2.0)
+        mids = np.clip(mids, 0, chr_length)
+
+        # alternate between two vertical spans to reduce overplotting in dense regions
+        mids = np.sort(mids)
+        y0a, y1a = box_y, box_y + box_h
+        y0b, y1b = box_y + 0.10, box_y + box_h - 0.10
+
+        for k, x in enumerate(mids):
+            if k % 2 == 0:
+                ax.vlines(x, y0a, y1a, colors=color, linewidth=1.2, alpha=0.95)
+            else:
+                ax.vlines(x, y0b, y1b, colors=color, linewidth=1.2, alpha=0.95)
+
+    # styling
+    ax.set_xlim(0, chr_length)
+    ax.set_ylim(0, 1.0)
+    ax.set_yticks([])
+    ax.grid(True, axis="x", alpha=0.08)
+    ax.spines["left"].set_visible(False)
+    ax.spines["right"].set_visible(False)
+    ax.spines["top"].set_visible(False)
+    ax.tick_params(axis="x", which="both", labelbottom=False, bottom=False)
+
+
+def plot_subtel_track(
+    ax,
+    chr_length: int,
+    subtel_size: int = SUBTEL_SIZE,
+):
+    # baseline
+    ax.axhline(0, linewidth=0.8)
+
+    # subtelomere boxes as a dedicated track
+    left_end = min(subtel_size, chr_length)
+    right_start = max(0, chr_length - subtel_size)
+
+    ax.add_patch(
+        plt.Rectangle((0, 0.15), left_end, 0.70, linewidth=0, facecolor="red", alpha=0.8)
+    )
+    ax.add_patch(
+        plt.Rectangle((right_start, 0.15), chr_length - right_start, 0.70, linewidth=0, facecolor="red", alpha=0.8)
+    )
+
+    # styling
+    ax.set_xlim(0, chr_length)
+    ax.set_ylim(0, 1.0)
+    ax.set_yticks([])
+    ax.grid(True, axis="x", alpha=0.08)
+    ax.spines["left"].set_visible(False)
+    ax.spines["right"].set_visible(False)
+    ax.spines["top"].set_visible(False)
+    ax.tick_params(axis="x", which="both", labelbottom=False, bottom=False)
+
+
+def add_all_rulers_panel(
+    fig,
+    gs_slot,
+    ax_sharex,
+    chrom_df: pd.DataFrame,
+    chr_length: int,
+    g4_chrom: pd.DataFrame,
+    trna_chrom: pd.DataFrame,
+    te_chrom: pd.DataFrame,
+    bin_size: int,
+):
+    # 6 tracks x 2 cols (labels + tracks). All same height.
+    sub = gs_slot.subgridspec(
+        6, 2,
+        height_ratios=[0.75, 0.75, 0.75, 0.75, 0.75, 0.75],
+        width_ratios=[0.10, 0.90],
+        hspace=0.10,
+        wspace=0.0
+    )
+
+    labels = ["Coverage", "BrdU", "G4", "tRNA", "TE", "Subtel"]
+    axes = []
+
+    for i, lab in enumerate(labels):
+        ax_lab = fig.add_subplot(sub[i, 0])
+        ax_lab.axis("off")
+        ax_lab.text(
+            0.98, 0.5, lab,
+            ha="right", va="center",
+            fontsize=9,
+            transform=ax_lab.transAxes
+        )
+
+        ax_tr = fig.add_subplot(sub[i, 1], sharex=ax_sharex)
+        axes.append(ax_tr)
+
+    ax_cov, ax_brd, ax_g4, ax_trna, ax_te, ax_subtel = axes
+
+    plot_stick_ruler(
+        ax_cov,
+        chrom_df=chrom_df,
+        x_col="start",
+        y_col="Nmod_smooth",
+        chr_length=chr_length,
+        subtel_size=SUBTEL_SIZE,
+        bin_size=bin_size,
+        max_height=1.0
+    )
+
+    plot_stick_ruler(
+        ax_brd,
+        chrom_df=chrom_df,
+        x_col="start",
+        y_col="BrdU_smooth",
+        chr_length=chr_length,
+        subtel_size=SUBTEL_SIZE,
+        bin_size=bin_size,
+        max_height=1.0
+    )
+
+    plot_feature_track(ax_g4, g4_chrom, chr_length, subtel_size=SUBTEL_SIZE, color="green")
+    plot_feature_track(ax_trna, trna_chrom, chr_length, subtel_size=SUBTEL_SIZE, color="purple")
+    plot_feature_track(ax_te, te_chrom, chr_length, subtel_size=SUBTEL_SIZE, color="orange")
+    plot_subtel_track(ax_subtel, chr_length, subtel_size=SUBTEL_SIZE)
+
+    # Only bottom ruler shows x-axis labels/ticks
+    ax_subtel.tick_params(axis="x", which="both", labelbottom=True, bottom=True)
+
+
 def render_feature_diagram_png(
     chrom: str,
     chr_length: int,
@@ -214,8 +442,8 @@ def render_feature_diagram_png(
     te_chrom: pd.DataFrame,
     out_png: str,
     subtel_size: int = SUBTEL_SIZE,
-    width: int = 3000,
-    height: int = 260,
+    width: int = 12000,
+    height: int = 500,
 ):
     """
     Creates a linear GenomeDiagram showing feature tracks for G4/tRNA/TE.
@@ -225,6 +453,7 @@ def render_feature_diagram_png(
     Final output is a PNG written to out_png.
     """
     diagram = GenomeDiagram.Diagram(f"Chr {chrom} features")
+
 
     # Track 1: ruler + subtelomeres
     track_ruler = diagram.new_track(
@@ -287,8 +516,6 @@ def main():
     # te_df = load_te_motifs_bodies()
 
     output_dir = get_output_dir()
-    tmp_dir = os.path.join(output_dir, "_tmp_feature_diagrams")
-    os.makedirs(tmp_dir, exist_ok=True)
 
     for chrom in sorted(df["chrom"].unique(), key=chrom_sort_key):
         chrom_df = df[df["chrom"] == chrom].copy()
@@ -303,33 +530,15 @@ def main():
 
         chr_length = int(chrom_lengths.get(chrom, chrom_df["end"].max()))
 
-        # Render GenomeDiagram PNG for this chromosome
-        feature_png = os.path.join(tmp_dir, f"chr_{chrom}_features.png")
-        render_feature_diagram_png(
-            chrom=chrom,
-            chr_length=chr_length,
-            g4_chrom=g4_chrom,
-            trna_chrom=trna_chrom,
-            te_chrom=te_chrom,
-            out_png=feature_png,
-            subtel_size=SUBTEL_SIZE,
-        )
-
-        feature_img = plt.imread(feature_png)
-        feature_img = trim_horizontal_whitespace(feature_img, thresh=0.985, pad_px=2)
-
         # Combined figure
-        fig = plt.figure(figsize=(15, 6))
+        fig = plt.figure(figsize=(15, 7))
         gs = fig.add_gridspec(
-            2, 2,
-            height_ratios=[3.5, 1.2],
-            width_ratios=[0.08, 0.92],
-            hspace=0.05,
-            wspace=0.0
+            3, 1,
+            height_ratios=[3.5, 0.40, 2.5],
+            hspace=0.15
         )
 
-        # Top plot spans both columns
-        ax = fig.add_subplot(gs[0, :])
+        ax = fig.add_subplot(gs[0, 0])
 
         ax.axvspan(0, SUBTEL_SIZE, alpha=0.2, color='red', label='Subtelomeric region')
         ax.axvspan(chr_length - SUBTEL_SIZE, chr_length, alpha=0.2, color='red')
@@ -356,29 +565,22 @@ def main():
         ax.grid(True, axis="x", alpha=0.15)
         ax.legend(loc="upper left", bbox_to_anchor=(1.02, 1.0), borderaxespad=0)
 
-        # Bottom-left: labels
-        ax_lab = fig.add_subplot(gs[1, 0])
-        ax_lab.axis("off")
-        ax_lab.text(0.98, 0.80, "G4",    ha="right", va="center", fontsize=11, transform=ax_lab.transAxes)
-        ax_lab.text(0.98, 0.55, "tRNA",  ha="right", va="center", fontsize=11, transform=ax_lab.transAxes)
-        ax_lab.text(0.98, 0.30, "TE",    ha="right", va="center", fontsize=11, transform=ax_lab.transAxes)
-        ax_lab.text(0.98, 0.08, "Subtel", ha="right", va="center", fontsize=10, transform=ax_lab.transAxes)
+        # Determines how details our Coverage/BrdU count is
+        # The higher the approx_sticks the more bins
+        approx_sticks = 2000
+        bin_size = max(50, int(chr_length // approx_sticks))
 
-        # Bottom-right: GenomeDiagram image aligned to genomic coordinates
-        ax_img = fig.add_subplot(gs[1, 1], sharex=ax)
-        ax_img.imshow(
-            feature_img,
-            aspect="auto",
-            extent=[0, chr_length, 0, 1],
-            interpolation="nearest"
-        )
-        ax_img.set_xlim(0, chr_length)
-        ax_img.axis("off")
-        ax_img.text(
-            0.5, 1.02, "Genome features (GenomeDiagram)",
-            ha="center", va="bottom",
-            transform=ax_img.transAxes,
-            fontsize=10
+        # All rulers in one unified panel 
+        add_all_rulers_panel(
+            fig=fig,
+            gs_slot=gs[2, 0],
+            ax_sharex=ax,
+            chrom_df=chrom_df,
+            chr_length=chr_length,
+            g4_chrom=g4_chrom,
+            trna_chrom=trna_chrom,
+            te_chrom=te_chrom,
+            bin_size=bin_size
         )
 
         plt.tight_layout()
