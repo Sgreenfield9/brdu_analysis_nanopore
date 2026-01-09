@@ -12,7 +12,7 @@ pip install -r requirements.txt
 ## Overview
 This project provides a pipeline for extracting and visualizing BrdU-related genomic features in Nanopore sequencing data for the W303 strain on yeast. It uses publicly available NCBI genome data, to pare G4 motifs, tRNA, and transposable elements. We then plot it on a chromosome browser.
 ## Data Acquisition
-**NOTE: Make sure to install NCBI Datasets CLI tool. The documentation is found [here](__https://www.ncbi.nlm.nih.gov/datasets/docs/v2/command-line-tools/download-and-install/__):**
+**NOTE: Make sure to install NCBI Datasets CLI tool. The documentation is found [here](https://www.ncbi.nlm.nih.gov/datasets/docs/v2/command-line-tools/download-and-install/):**
 ```bash
 datasets download genome accession GCA_002163515.1 \
  --include gff3,genome
