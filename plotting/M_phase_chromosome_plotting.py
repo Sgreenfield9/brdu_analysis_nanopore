@@ -218,6 +218,14 @@ def _binned_signal(x: np.ndarray, y: np.ndarray, chr_length: int, bin_size: int)
     if edges.size < 2:
         edges = np.array([0, chr_length], dtype=np.int64)
 
+    mask = np.isfinite(y)
+    if not np.any(mask):
+        centers = (edges[:-1] + edges[1:]) / 2.0
+        return centers, np.zeros_like(centers, dtype=float)
+
+    x = x[mask]
+    y = y[mask]
+
     # assign each x to a bin
     idx = np.clip(np.digitize(x, edges) - 1, 0, edges.size - 2)
 
@@ -378,14 +386,14 @@ def add_all_rulers_panel(
 ):
     # 6 tracks x 2 cols (labels + tracks). All same height.
     sub = gs_slot.subgridspec(
-        6, 2,
-        height_ratios=[0.75, 0.75, 0.75, 0.75, 0.75, 0.75],
+        7, 2,
+        height_ratios=[0.75, 0.75, 0.75, 0.75, 0.75, 0.75, 0.75],
         width_ratios=[0.10, 0.90],
         hspace=0.10,
         wspace=0.0
     )
 
-    labels = ["Coverage", "BrdU", "G4", "tRNA", "TE", "Subtel"]
+    labels = ["Coverage", "BrdU", "BrdU %", "G4", "tRNA", "TE", "Subtel"]
     axes = []
 
     for i, lab in enumerate(labels):
@@ -401,13 +409,13 @@ def add_all_rulers_panel(
         ax_tr = fig.add_subplot(sub[i, 1], sharex=ax_sharex)
         axes.append(ax_tr)
 
-    ax_cov, ax_brd, ax_g4, ax_trna, ax_te, ax_subtel = axes
+    ax_cov, ax_brd, ax_brd_pct, ax_g4, ax_trna, ax_te, ax_subtel = axes
 
     plot_stick_ruler(
         ax_cov,
         chrom_df=chrom_df,
         x_col="start",
-        y_col="Nmod_smooth",
+        y_col="Nmod_smooth", # Plots the Coverage
         chr_length=chr_length,
         subtel_size=SUBTEL_SIZE,
         bin_size=bin_size,
@@ -418,11 +426,22 @@ def add_all_rulers_panel(
         ax_brd,
         chrom_df=chrom_df,
         x_col="start",
-        y_col="BrdU_smooth",
+        y_col="BrdU_smooth", # Plots the BrdU count
         chr_length=chr_length,
         subtel_size=SUBTEL_SIZE,
         bin_size=bin_size,
         max_height=1.0
+    )
+
+    plot_stick_ruler(
+        ax_brd_pct,
+        chrom_df=chrom_df,
+        x_col="start",
+        y_col="BrdU_pct_smooth", # Plots BrdU count / coverage (%)
+        chr_length=chr_length,
+        subtel_size=SUBTEL_SIZE,
+        bin_size=bin_size,
+        max_height=100.0
     )
 
     plot_feature_track(ax_g4, g4_chrom, chr_length, subtel_size=SUBTEL_SIZE, color="green")
@@ -527,6 +546,13 @@ def main():
 
         chrom_df["BrdU_smooth"] = smooth_counts(chrom_df["BrdU_count"], window=1000)
         chrom_df["Nmod_smooth"] = smooth_counts(chrom_df["Nmod"], window=1000)
+        chrom_df["BrdU_pct"] = np.where(
+            chrom_df["Nmod"] > 0,
+            100.0 * chrom_df["BrdU_count"] / chrom_df["Nmod"],
+            np.nan
+        )
+        chrom_df.loc[chrom_df["BrdU_pct"] <= 0, "BrdU_pct"] = np.nan
+        chrom_df["BrdU_pct_smooth"] = smooth_counts(chrom_df["BrdU_pct"], window=1000)
 
         chr_length = int(chrom_lengths.get(chrom, chrom_df["end"].max()))
 
@@ -583,7 +609,7 @@ def main():
             bin_size=bin_size
         )
 
-        # ** Comment out lines 588-640 if we DO NOT want them on the original plot
+        # ** Comment out lines 588-640 if we DO NOT want them on the original plot **
         # Extend y-limit to make room for motif tracks above the data
         # ax.set_ylim(0, 22)
         # y_max = 20  # Keep motifs relative to data range, not extended limit
