@@ -14,8 +14,8 @@ This project provides a pipeline for extracting and visualizing BrdU-related gen
 ## Data Acquisition
 **NOTE: Make sure to install NCBI Datasets CLI tool. The documentation is found [here](__https://www.ncbi.nlm.nih.gov/datasets/docs/v2/command-line-tools/download-and-install/__):**
 ```bash
-datasets download genome accession GCF_000146045.2 \
-  --include genome,gff3
+datasets download genome accession GCA_002163515.1 \
+ --include gff3,genome
 ```
 ```bash
 unzip ncbi_dataset.zip

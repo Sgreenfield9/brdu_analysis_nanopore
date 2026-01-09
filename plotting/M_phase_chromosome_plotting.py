@@ -583,6 +583,68 @@ def main():
             bin_size=bin_size
         )
 
+        # ** Comment out lines 588-640 if we DO NOT want them on the original plot
+        # Extend y-limit to make room for motif tracks above the data
+        # ax.set_ylim(0, 22)
+        # y_max = 20  # Keep motifs relative to data range, not extended limit
+        
+        # # Position motif tracks above the main data
+        # g4_line_height = y_max * 1.10
+        # trna_line_height = y_max * 1.05  
+        # te_line_height = y_max * 1.00
+        # band_height = y_max * 0.04  # Thicker bands for visibility
+
+        # # Plot G4 motifs as thick horizontal bands
+        # first_g4 = True
+        # for _, motif in g4_chrom.iterrows():
+        #     label = "G4 motif" if first_g4 else None
+        #     ax.axvspan(
+        #         motif["start"],
+        #         motif["end"],
+        #         ymin = 0,
+        #         ymax=y_max,
+        #         # ymin=(g4_line_height - band_height/2) / 22,
+        #         # ymax=(g4_line_height + band_height/2) / 22,
+        #         color="green",
+        #         alpha=0.8,
+        #         label=label
+        #     )
+        #     first_g4 = False
+
+        # # Plot tRNA motifs as thick horizontal bands
+        # first_trna = True
+        # for _, motif in trna_chrom.iterrows():
+        #     label = "tRNA motif" if first_trna else None
+        #     ax.axvspan(
+        #         motif["start"],
+        #         motif["end"],
+        #         ymin = 0,
+        #         ymax = y_max,
+        #         # ymin=(trna_line_height - band_height/2) / 22,
+        #         # ymax=(trna_line_height + band_height/2) / 22,
+        #         color="purple",
+        #         alpha=0.8,
+        #         label=label
+        #     )
+        #     first_trna = False
+
+        # # Plot TE motifs as thick horizontal bands
+        # first_te = True
+        # for _, motif in te_chrom.iterrows():
+        #     label = "TE motif" if first_te else None
+        #     ax.axvspan(
+        #         motif["start"],
+        #         motif["end"],
+        #         ymin = 0,
+        #         ymax = y_max,
+        #         # ymin=(te_line_height - band_height/2) / 22,
+        #         # ymax=(te_line_height + band_height/2) / 22,
+        #         color="orange",
+        #         alpha=0.8,
+        #         label=label
+        #     )
+        #     first_te = False
+
         plt.tight_layout()
 
         save_path = os.path.join(output_dir, f"chromosome_{chrom}.png")
