@@ -264,8 +264,8 @@ def plot_stick_ruler(
         h = np.zeros_like(binned)
 
     # subtelomeres background (same as main plot)
-    ax.axvspan(0, subtel_size, alpha=0.2, color='red')
-    ax.axvspan(chr_length - subtel_size, chr_length, alpha=0.2, color='red')
+    # ax.axvspan(0, subtel_size, alpha=0.2, color='red')
+    # ax.axvspan(chr_length - subtel_size, chr_length, alpha=0.2, color='red')
 
     # baseline + sticks
     ax.axhline(0, linewidth=baseline_lw)
@@ -302,8 +302,8 @@ def plot_feature_track(
     box_h: float = 0.70,
 ):
     # subtelomeres background (same as main plot)
-    ax.axvspan(0, subtel_size, alpha=0.2, color='red')
-    ax.axvspan(chr_length - subtel_size, chr_length, alpha=0.2, color='red')
+    # ax.axvspan(0, subtel_size, alpha=0.2, color='red')
+    # ax.axvspan(chr_length - subtel_size, chr_length, alpha=0.2, color='red')
 
     # baseline
     ax.axhline(0, linewidth=0.8)
