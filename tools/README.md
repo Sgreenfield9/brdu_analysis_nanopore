@@ -5,13 +5,13 @@ This is the tools page. This is where I describe how to use the open-source tool
 G4Hunter is a tool that helps extract G4's from .fasta file formats. Thanks to [AnimaTardeb](https://github.com/AnimaTardeb/G4Hunter) for making this tool. These are the steps you need to run in order to replicate my steps.
 
 1. Create the Python 2.7 virtual environment in the **root directory**
-    ```bash
+```bash
     conda create \
   --prefix ./g4hunter_env \
   python=2.7 \
   biopython \
   numpy
-  ```
+```
 2. Then you will activate the virtual environment
 ```bash
     conda activate ./env/g4hunter_env/
