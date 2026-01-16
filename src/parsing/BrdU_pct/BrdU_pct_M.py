@@ -11,7 +11,7 @@ if repo_root not in sys.path:
     sys.path.insert(0, repo_root)
 
 # Import used to use combined dataset for BrdU %
-from plotting.M_phase_chromosome_plotting import prepare_dataframe
+from plotting.M_phase_chromosome_plotting import prepare_dataframe, smooth_counts
 
 def get_export_dir() -> str:
     """
@@ -23,7 +23,7 @@ def get_export_dir() -> str:
     os.makedirs(output_dir, exist_ok=True)
     return output_dir
 
-def compute_brdU_pct(df: pd.DataFrame) -> pd.DataFrame:
+def compute_brdU_pct(df: pd.DataFrame, min_distance: int) -> pd.DataFrame:
     out = df.copy()
 
     # Matched plotting logic: per chromosome sort + drop the duplicates
@@ -38,6 +38,23 @@ def compute_brdU_pct(df: pd.DataFrame) -> pd.DataFrame:
     )
 
     out.loc[out["BrdU_pct"] <= 0, "BrdU_pct"] = np.nan
+
+    # Match plotting: smooth per chromosome (window=1000) on BrdU_pct
+    out["BrdU_pct"] = (
+        out.groupby("chrom", sort=False)["BrdU_pct"]
+        .transform(lambda s: smooth_counts(s, window=1000))
+    )
+
+    # Optional thinning: keep at most one row per min distance per chromosome
+    if min_distance > 0:
+        keep_idx = []
+        for chrom, chrom_df in out.groupby("chrom", sort=False):
+            last_kept = None
+            for idx, start in zip(chrom_df.index, chrom_df["start"]):
+                if last_kept is None or (start - last_kept) >= min_distance:
+                    keep_idx.append(idx)
+                    last_kept = start
+        out = out.loc[keep_idx]
 
     # Clean up infinites/nan
     out = out.replace([np.inf, -np.inf], np.nan)
@@ -67,8 +84,11 @@ def main():
     # Combined positive + negative dataframe
     df = prepare_dataframe()
 
-    df_pct = compute_brdU_pct(df)
-    export_sorted_brdU_pct_csv(df_pct, export_dir)
+    for min_distance in (2500, 5000, 10000):
+        df_pct = compute_brdU_pct(df, min_distance=min_distance)
+        suffix_kb = min_distance / 1000.0
+        filename = f"BrdU_pct_sorted_desc_{suffix_kb:g}kb.csv"
+        export_sorted_brdU_pct_csv(df_pct, export_dir, filename=filename)
 
 
 if __name__ == "__main__":
