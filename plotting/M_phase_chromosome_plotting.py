@@ -12,16 +12,12 @@ The script:
 import pandas as pd
 import matplotlib.pyplot as plt
 import os
-import cairosvg
 import numpy as np
 from pathlib import Path
 from dotenv import load_dotenv
 from typing import Optional
 from matplotlib.ticker import ScalarFormatter
 
-from Bio.Graphics import GenomeDiagram
-from Bio.SeqFeature import SeqFeature, FeatureLocation
-from reportlab.lib import colors as rl_colors
 
 # Load positive and negative bedgraphs
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -81,6 +77,14 @@ def prepare_dataframe():
 
 
 def load_motifs_from_bed(env_key: str, description: str):
+    """
+    Helper method to load BED file path. It reads the BED file as a tab-separated
+    file with no header. Ensures that there is at least three columns in the file
+    (chrom, start, end).
+    Maps the chromosome ID's via the map_chromosome, forces the chrom to string
+    and it drops and rows that can't be plotted. 
+    It then returns the clean DataFrame. 
+    """
     bed_path = os.getenv(env_key)
     if not bed_path:
         raise ValueError(f"{env_key} must be set in env/.env")
@@ -101,35 +105,30 @@ def load_motifs_from_bed(env_key: str, description: str):
 
 
 def load_g4_motifs():
-    g4_path = os.getenv("G4_MOTIFS_BED")
-    if g4_path:
-        return load_motifs_from_bed("G4_MOTIFS_BED", "G4 motifs")
-
-    g4_fallback = REPO_ROOT / "results" / "G4_extraction" / "g4.motifs.bed"
-    if not os.path.exists(g4_fallback):
-        raise FileNotFoundError(f"G4 motifs BED file not found at {g4_fallback}")
-
-    g4_df = pd.read_csv(
-        g4_fallback,
-        sep="\t",
-        header=None,
-        names=["chrom", "start", "end", "name", "score", "strand"]
-    )
-    g4_df["chrom"] = g4_df["chrom"].map(map_chromosome)
-    g4_df = g4_df.dropna(subset=["chrom"])
-    g4_df["chrom"] = g4_df["chrom"].astype(str)
-    return g4_df
+    """
+    Load the G4 motifs BED file and map chromosome identifiers.
+    """
+    return load_motifs_from_bed("G4_MOTIFS_BED", "G4 motifs")
 
 
 def load_trna_motifs():
+    """
+    Load the tRNA motfis BED file and map chromosome identifiers.
+    """
     return load_motifs_from_bed("tRNA_MOTIFS_BED", "tRNA motifs")
 
 
 def load_te_motifs_all():
+    """
+    Load the TE motifs for both bodies and LTRs BED file and map chromosome identifiers.
+    """
     return load_motifs_from_bed("TE_MOTIFS_BED_ALL", "TE motifs (all)")
 
 
 def load_te_motifs_bodies():
+    """
+    Load the TE motifs for bodies only BED file and map chromosome identifiers.
+    """
     return load_motifs_from_bed("TE_MOTIFS_BED_BODIES", "TE motifs (bodies)")
 
 
@@ -184,26 +183,6 @@ def chrom_sort_key(x):
 
 def smooth_counts(series, window=200):
     return series.rolling(window=window, min_periods=1, center=True).mean()
-
-
-def trim_horizontal_whitespace(img, thresh=0.985, pad_px=2):
-    """
-    Trims left/right near-white padding from an RGB/RGBA image.
-    Keeps full height. pad_px keeps a small margin so you don't cut ticks.
-    """
-    if img.ndim != 3:
-        return img
-
-    rgb = img[..., :3]
-    nonwhite = np.any(rgb < thresh, axis=2)        # not white-ish
-    cols = np.where(nonwhite.any(axis=0))[0]       # columns with any drawing
-
-    if cols.size == 0:
-        return img
-
-    c0 = max(int(cols[0]) - pad_px, 0)
-    c1 = min(int(cols[-1]) + 1 + pad_px, img.shape[1])
-    return img[:, c0:c1, :]
 
 
 def _binned_signal(x: np.ndarray, y: np.ndarray, chr_length: int, bin_size: int):
@@ -309,6 +288,11 @@ def plot_feature_track(
     box_y: float = 0.15,
     box_h: float = 0.70,
 ):
+    """
+    Function that plots rulers for all the genomic features. This include
+    G4 motifs, tRNA, and TE. This method helps the ticks be more visible along
+    with making the plot easy to read. 
+    """
     # subtelomeres background (same as main plot)
     # ax.axvspan(0, subtel_size, alpha=0.2, color='red')
     # ax.axvspan(chr_length - subtel_size, chr_length, alpha=0.2, color='red')
@@ -348,6 +332,10 @@ def plot_subtel_track(
     chr_length: int,
     subtel_size: int = SUBTEL_SIZE,
 ):
+    """
+    This function helps plot the subtel (subtelomeric) ruler at the bottom
+    of our ruler plots. 
+    """
     # baseline
     ax.axhline(0, linewidth=0.8)
 
@@ -384,6 +372,10 @@ def add_all_rulers_panel(
     te_chrom: pd.DataFrame,
     bin_size: int,
 ):
+    """
+    This function makes sure that all the rulers are to scale and plotted in this order:
+    Coverage -> BrdU -> BrdU% -> G4, -> tRNA -> TE -> subtel
+    """
     # 6 tracks x 2 cols (labels + tracks). All same height.
     sub = gs_slot.subgridspec(
         7, 2,
@@ -453,81 +445,15 @@ def add_all_rulers_panel(
     ax_subtel.tick_params(axis="x", which="both", labelbottom=True, bottom=True)
 
 
-def render_feature_diagram_png(
-    chrom: str,
-    chr_length: int,
-    g4_chrom: pd.DataFrame,
-    trna_chrom: pd.DataFrame,
-    te_chrom: pd.DataFrame,
-    out_png: str,
-    subtel_size: int = SUBTEL_SIZE,
-    width: int = 12000,
-    height: int = 500,
-):
-    """
-    Creates a linear GenomeDiagram showing feature tracks for G4/tRNA/TE.
-
-    GenomeDiagram -> SVG
-    SVG -> PNG via cairosvg
-    Final output is a PNG written to out_png.
-    """
-    diagram = GenomeDiagram.Diagram(f"Chr {chrom} features")
-
-
-    # Track 1: ruler + subtelomeres
-    track_ruler = diagram.new_track(
-        1, name="Ruler", greytrack=False, scale=True, scale_ticks=True
-    )
-    ruler_set = track_ruler.new_set()
-
-    left = SeqFeature(FeatureLocation(0, min(subtel_size, chr_length)), type="subtelomere")
-    ruler_set.add_feature(left, sigil="BOX", color=rl_colors.red, alpha=0.25)
-
-    right_start = max(0, chr_length - subtel_size)
-    right = SeqFeature(FeatureLocation(right_start, chr_length), type="subtelomere")
-    ruler_set.add_feature(right, sigil="BOX", color=rl_colors.red, alpha=0.25)
-
-    # Track 2: TE
-    track_te = diagram.new_track(2, name="TE", greytrack=True)
-    te_set = track_te.new_set()
-    for _, row in te_chrom.iterrows():
-        start, end = int(row["start"]), int(row["end"])
-        if end > start:
-            feat = SeqFeature(FeatureLocation(start, end), type="TE")
-            te_set.add_feature(feat, sigil="BOX", color=rl_colors.orange, alpha=0.8)
-
-    # Track 3: tRNA
-    track_trna = diagram.new_track(3, name="tRNA", greytrack=True)
-    trna_set = track_trna.new_set()
-    for _, row in trna_chrom.iterrows():
-        start, end = int(row["start"]), int(row["end"])
-        if end > start:
-            feat = SeqFeature(FeatureLocation(start, end), type="tRNA")
-            trna_set.add_feature(feat, sigil="BOX", color=rl_colors.purple, alpha=0.9)
-
-    # Track 4: G4
-    track_g4 = diagram.new_track(4, name="G4", greytrack=True)
-    g4_set = track_g4.new_set()
-    for _, row in g4_chrom.iterrows():
-        start, end = int(row["start"]), int(row["end"])
-        if end > start:
-            feat = SeqFeature(FeatureLocation(start, end), type="G4")
-            g4_set.add_feature(feat, sigil="BOX", color=rl_colors.green, alpha=0.9)
-
-    diagram.draw(
-        format="linear",
-        pagesize=(width, height),
-        start=0,
-        end=chr_length,
-        fragments=1,
-    )
-
-    out_svg = os.path.splitext(out_png)[0] + ".svg"
-    diagram.write(out_svg, "SVG")
-    cairosvg.svg2png(url=out_svg, write_to=out_png)
-
-
 def main():
+    """
+    In our main function we are calling all our methods in order to plot our data.
+    We start by getting our combinded df and loading all of our genomic features. 
+    We plot our original genome browser plot and then we plot our ruler plot. We
+    then combine the images together and  put them into the same .png to use for
+    data analysis. All of our plots are then saved to our output directory
+    set in our .env file. 
+    """
     df = prepare_dataframe()
     g4_df = load_g4_motifs()
     trna_df = load_trna_motifs()
