@@ -10,15 +10,15 @@ repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", 
 if repo_root not in sys.path:
     sys.path.insert(0, repo_root)
 
-# Import used to use combined dataset for BrdU % and smoothing
-from plotting.M_phase_chromosome_plotting import prepare_dataframe, smooth_counts
+# Import used to use combined dataset for BrdU % and smoothing 
+from plotting.S_phase_chromosome_plotting import prepare_dataframe, smooth_counts
 
 def get_export_dir() -> str:
     """
     Determine the output directory for saving BrdU%'s.
-     The output directory is set in our .env.
+    The output directory is set in our .env.
     """
-    output_dir = os.getenv("BRDU_PCT_OUTPUT_M")
+    output_dir = os.getenv("BRDU_PCT_OUTPUT_S")
     if not output_dir:
         output_dir = os.path.join(os.getcwd(), "output", "BrdU_pct")
     os.makedirs(output_dir, exist_ok=True)
@@ -30,7 +30,7 @@ def compute_brdU_pct(df: pd.DataFrame, min_distance: int) -> pd.DataFrame:
     We will keep track of the chromosome and starting point.
     We will then calculate the BrdU% using the BrdU count/Nmod
     * 100. We are excluding all percentages that are 0. We will 
-    clean up any inf/nan that the code will get. 
+    clean up any inf/nan that the code will get.
     """
     out = df.copy()
 
@@ -92,7 +92,7 @@ def main():
     # Combined positive + negative dataframe
     df = prepare_dataframe()
 
-    for min_distance in (2500, 5000, 10000):
+    for min_distance in (2500, 5000, 10000, 12500, 15000):
         df_pct = compute_brdU_pct(df, min_distance=min_distance)
         suffix_kb = min_distance / 1000.0
         filename = f"BrdU_pct_sorted_desc_{suffix_kb:g}kb.csv"

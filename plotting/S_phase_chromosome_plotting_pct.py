@@ -6,7 +6,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 from matplotlib.ticker import ScalarFormatter
 
-import M_phase_chromosome_plotting as m
+import S_phase_chromosome_plotting as s
 
 # Goes to the root directory and finds
 # the /env/.env directory and file respectively
@@ -19,36 +19,36 @@ def get_output_dir():
     This gets the output directory for where we want to put our new plots. This will
     be given in the env/e.env
     """
-    output_dir = os.getenv("BRDU_M_PCT_10KB_OUTPUT")
+    output_dir = os.getenv("BRDU_S_PCT_10KB_OUTPUT")
     if not output_dir:
-        output_dir = os.path.join(os.getcwd(), "output", "M_Phase_pct_10kb")
+        output_dir = os.path.join(os.getcwd(), "output", "S_Phase_pct_10kb")
     os.makedirs(output_dir, exist_ok=True)
     return Path(output_dir)
 
 
-def load_M_pct_10kb():
+def load_S_pct_10kb():
     """
     This method finds the path for the dataset we are using. If the dataset is not found
     it warns the user to put it in the env/.env. If the path does not exist it will warn
     the user that the path does not exist.
     """
-    M_10kb_pct = os.getenv("BRDU_M_PCT_10KB")
-    if not M_10kb_pct:
-        raise ValueError("BRDU_M_PCT_10KB must be set in the env/.env")
-    if not os.path.exists(M_10kb_pct):
-        raise FileNotFoundError(f"BRDU_M_PCT_10KB not found at {M_10kb_pct}")
-    return pd.read_csv(M_10kb_pct)
+    S_10kb_pct = os.getenv("BRDU_S_PCT_10KB")
+    if not S_10kb_pct:
+        raise ValueError("BRDU_S_PCT_10KB must be set in the env/.env")
+    if not os.path.exists(S_10kb_pct):
+        raise FileNotFoundError(f"BRDU_S_PCT_10KB not found at {S_10kb_pct}")
+    return pd.read_csv(S_10kb_pct)
 
 
 # Input come fron env/.env
-poi = load_M_pct_10kb().head(20)
+poi = load_S_pct_10kb().head(20)
 out_dir = get_output_dir()
 
-# Getting our data from the M_phase_chromosome_plotting.py
-df = m.prepare_dataframe()
-g4_df = m.load_g4_motifs()
-trna_df = m.load_trna_motifs()
-te_df = m.load_te_motifs_all()
+# Getting our data from the S_phase_chromosome_plotting.py
+df = s.prepare_dataframe()
+g4_df = s.load_g4_motifs()
+trna_df = s.load_trna_motifs()
+te_df = s.load_te_motifs_all()
 
 # Cache per-chromosome smoothed dataframe once
 chrom_cache = {}  # chrom -> (chrom_df_smoothed, chr_length)
@@ -66,17 +66,17 @@ for _, row in poi.iterrows():
             chrom_df = chrom_df.sort_values("start").drop_duplicates(subset="start")
 
             # Smooth + compute % ONCE per chromosome
-            chrom_df["BrdU_smooth"] = m.smooth_counts(chrom_df["BrdU_count"], window=1000)
-            chrom_df["Nmod_smooth"] = m.smooth_counts(chrom_df["Nmod"], window=1000)
+            chrom_df["BrdU_smooth"] = s.smooth_counts(chrom_df["BrdU_count"], window=1000)
+            chrom_df["Nmod_smooth"] = s.smooth_counts(chrom_df["Nmod"], window=1000)
             chrom_df["BrdU_pct"] = np.where(
                 chrom_df["Nmod"] > 0,
                 100.0 * chrom_df["BrdU_count"] / chrom_df["Nmod"],
                 np.nan
             )
             chrom_df.loc[chrom_df["BrdU_pct"] <= 0, "BrdU_pct"] = np.nan
-            chrom_df["BrdU_pct_smooth"] = m.smooth_counts(chrom_df["BrdU_pct"], window=1000)
+            chrom_df["BrdU_pct_smooth"] = s.smooth_counts(chrom_df["BrdU_pct"], window=1000)
 
-            chr_length = int(m.chrom_lengths.get(chrom, chrom_df["end"].max()))
+            chr_length = int(s.chrom_lengths.get(chrom, chrom_df["end"].max()))
             chrom_cache[chrom] = (chrom_df, chr_length)
 
     chrom_df, chr_length = chrom_cache.get(chrom, (None, None))
@@ -113,8 +113,8 @@ for _, row in poi.iterrows():
     ax = fig.add_subplot(gs[0, 0])
 
     # Subtel background (still drawn using full-chr coordinates; xlim will clip)
-    ax.axvspan(0, m.SUBTEL_SIZE, alpha=0.2, color='red', label='Subtelomeric region')
-    ax.axvspan(chr_length - m.SUBTEL_SIZE, chr_length, alpha=0.2, color='red')
+    ax.axvspan(0, s.SUBTEL_SIZE, alpha=0.2, color='red', label='Subtelomeric region')
+    ax.axvspan(chr_length - s.SUBTEL_SIZE, chr_length, alpha=0.2, color='red')
 
     # Plot ONLY the window
     ax.fill_between(
@@ -145,7 +145,7 @@ for _, row in poi.iterrows():
     bin_size = max(10, int(window_len // approx_sticks))  # 10bp minimum
     bin_size = min(bin_size, 100)                         # 100bp maximum (for safety)
 
-    m.add_all_rulers_panel(
+    s.add_all_rulers_panel(
         fig=fig,
         gs_slot=gs[2, 0],
         ax_sharex=ax,
