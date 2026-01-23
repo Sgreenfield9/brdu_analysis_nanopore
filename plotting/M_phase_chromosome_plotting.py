@@ -535,6 +535,57 @@ def main():
             bin_size=bin_size
         )
 
+        # Replace the ruler "max" labels with true chromosome maxima
+        axes = fig.axes
+        cov_ax = brdu_ax = brdu_pct_ax = None
+        for i, a in enumerate(axes):
+            for t in a.texts:
+                if t.get_text() == "Coverage" and i + 1 < len(axes):
+                    cov_ax = axes[i + 1]
+                elif t.get_text() == "BrdU" and i + 1 < len(axes):
+                    brdu_ax = axes[i + 1]
+                elif t.get_text() == "BrdU %" and i + 1 < len(axes):
+                    brdu_pct_ax = axes[i + 1]
+
+        if cov_ax is not None:
+            for t in list(cov_ax.texts):
+                if t.get_text().startswith("max="):
+                    t.remove()
+            cov_max = float(chrom_df["Nmod_smooth"].max())
+            if np.isfinite(cov_max):
+                cov_ax.text(
+                    0.995, 0.82, f"max={cov_max:.2f}",
+                    ha="right", va="center",
+                    transform=cov_ax.transAxes,
+                    fontsize=8
+                )
+
+        if brdu_ax is not None:
+            for t in list(brdu_ax.texts):
+                if t.get_text().startswith("max="):
+                    t.remove()
+            brdu_max = float(chrom_df["BrdU_smooth"].max())
+            if np.isfinite(brdu_max):
+                brdu_ax.text(
+                    0.995, 0.82, f"max={brdu_max:.2f}",
+                    ha="right", va="center",
+                    transform=brdu_ax.transAxes,
+                    fontsize=8
+                )
+
+        if brdu_pct_ax is not None:
+            for t in list(brdu_pct_ax.texts):
+                if t.get_text().startswith("max="):
+                    t.remove()
+            brdu_pct_max = float(chrom_df["BrdU_pct_smooth"].max())
+            if np.isfinite(brdu_pct_max):
+                brdu_pct_ax.text(
+                    0.995, 0.82, f"max={brdu_pct_max:.2f}",
+                    ha="right", va="center",
+                    transform=brdu_pct_ax.transAxes,
+                    fontsize=8
+                )
+
         # ** Comment out lines 588-640 if we DO NOT want them on the original plot **
         # Extend y-limit to make room for motif tracks above the data
         # ax.set_ylim(0, 22)
