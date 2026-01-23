@@ -18,7 +18,7 @@ def get_export_dir() -> str:
     Determine the output directory for saving BrdU%'s.
     The output directory is set in our .env.
     """
-    output_dir = os.getenv("BRDU_PCT_OUTPUT_S")
+    output_dir = os.getenv("BRDU_PCT_OUTPUT_S_THRESHOLD")
     if not output_dir:
         output_dir = os.path.join(os.getcwd(), "output", "BrdU_pct")
     os.makedirs(output_dir, exist_ok=True)
@@ -70,11 +70,18 @@ def compute_brdU_pct(df: pd.DataFrame, min_distance: int) -> pd.DataFrame:
 
     return out
 
-def export_sorted_brdU_pct_csv(df_with_pct: pd.DataFrame, export_dir: str, filename: str = "BrdU_pct_sorted_desc.csv"):
+def export_sorted_brdU_pct_csv(
+    df_with_pct: pd.DataFrame,
+    export_dir: str,
+    filename: str = "BrdU_pct_sorted_desc.csv",
+    threshold_pct: float = 75.0,
+):
     """
     Sort BrdU% highest -> lowest and export to CSV with chromosome + base range.
     """
-    out = df_with_pct.sort_values("BrdU_pct", ascending=False).copy()
+    out = df_with_pct.copy()
+    out = out[out["BrdU_pct"] <= threshold_pct]
+    out = out.sort_values("BrdU_pct", ascending=False)
 
     # The columns we are keeping after parsing
     cols = ["chrom", "start", "end", "BrdU_pct", "BrdU_count", "Nmod"]
