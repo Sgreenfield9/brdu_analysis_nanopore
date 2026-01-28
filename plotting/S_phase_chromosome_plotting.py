@@ -505,7 +505,7 @@ def main():
         )
 
         ax.set_ylabel("Read count")
-        ax.set_title(f"Mitosis BrdU pileup along chromosome {chrom} (subtelomeres highlighted)")
+        ax.set_title(f"S Phase BrdU pileup along chromosome {chrom} (subtelomeres highlighted)")
         ax.set_xlim(0, chr_length)
         ax.set_ylim(0, 22)
         ax.set_xlabel("Genomic position (bp)")

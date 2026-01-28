@@ -19,7 +19,7 @@ def get_output_dir():
     This gets the output directory for where we want to put our new plots. This will
     be given in the env/e.env
     """
-    output_dir = os.getenv("BRDU_M_PCT_10KB_OUTPUT")
+    output_dir = os.getenv("BRDU_M_PCT_10KB_OUTPUT_THRESHOLD")
     if not output_dir:
         output_dir = os.path.join(os.getcwd(), "output", "M_Phase_pct_10kb")
     os.makedirs(output_dir, exist_ok=True)
@@ -32,11 +32,11 @@ def load_M_pct_10kb():
     it warns the user to put it in the env/.env. If the path does not exist it will warn
     the user that the path does not exist.
     """
-    M_10kb_pct = os.getenv("BRDU_M_PCT_10KB")
+    M_10kb_pct = os.getenv("BRDU_M_10KB_75_PCT_THRESHOLD_INPUT")
     if not M_10kb_pct:
-        raise ValueError("BRDU_M_PCT_10KB must be set in the env/.env")
+        raise ValueError("BRDU_M_10KB_75_PCT_THRESHOLD_INPUT must be set in the env/.env")
     if not os.path.exists(M_10kb_pct):
-        raise FileNotFoundError(f"BRDU_M_PCT_10KB not found at {M_10kb_pct}")
+        raise FileNotFoundError(f"BRDU_M_10KB_75_PCT_THRESHOLD_INPUT not found at {M_10kb_pct}")
     return pd.read_csv(M_10kb_pct)
 
 
