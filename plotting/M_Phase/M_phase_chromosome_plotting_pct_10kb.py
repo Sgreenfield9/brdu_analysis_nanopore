@@ -6,7 +6,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 from matplotlib.ticker import ScalarFormatter
 
-import plotting.M_Phase.M_phase_chromosome_plotting as m
+import M_phase_chromosome_plotting as m
 
 # Goes to the root directory and finds
 # the /env/.env directory and file respectively
@@ -86,10 +86,10 @@ for _, row in poi.iterrows():
     # Window boundaries: 10kb total (5kb each side), with left-edge handling
     if center < 5000:
         left = 0
-        right = min(chr_length, center + 10000)
+        right = min(chr_length, center + 30000)
     else:
-        left = max(0, center - 5000)
-        right = min(chr_length, center + 5000)
+        left = max(0, center - 15000)
+        right = min(chr_length, center + 15000)
 
     # Slice to just the window (fast)
     window_mask = (chrom_df["start"] >= left) & (chrom_df["start"] <= right)
