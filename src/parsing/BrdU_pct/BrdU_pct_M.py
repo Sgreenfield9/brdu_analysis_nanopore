@@ -11,7 +11,7 @@ if repo_root not in sys.path:
     sys.path.insert(0, repo_root)
 
 # Import used to use combined dataset for BrdU % and smoothing
-from plotting.M_phase_chromosome_plotting import prepare_dataframe, smooth_counts
+from plotting.M_Phase.M_phase_chromosome_plotting import prepare_dataframe, smooth_counts
 
 def get_export_dir() -> str:
     """
