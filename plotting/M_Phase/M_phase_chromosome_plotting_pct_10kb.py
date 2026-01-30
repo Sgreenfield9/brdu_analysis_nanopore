@@ -6,7 +6,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 from matplotlib.ticker import ScalarFormatter
 
-import plotting.M_Phase.M_phase_chromosome_plotting as m
+import M_phase_chromosome_plotting as m
 
 # Goes to the root directory and finds
 # the /env/.env directory and file respectively
