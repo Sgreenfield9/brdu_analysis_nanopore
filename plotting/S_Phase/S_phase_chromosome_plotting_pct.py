@@ -83,13 +83,13 @@ for _, row in poi.iterrows():
     if chrom_df is None or chr_length is None:
         continue
 
-    # Window boundaries: 10kb total (5kb each side), with left-edge handling
+    # Window boundaries: 30kb total (5kb each side), with left-edge handling
     if center < 5000:
         left = 0
-        right = min(chr_length, center + 10000)
+        right = min(chr_length, center + 30000)
     else:
-        left = max(0, center - 5000)
-        right = min(chr_length, center + 5000)
+        left = max(0, center - 15000)
+        right = min(chr_length, center + 15000)
 
     # Slice to just the window (fast)
     window_mask = (chrom_df["start"] >= left) & (chrom_df["start"] <= right)
