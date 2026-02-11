@@ -6,12 +6,16 @@ import sys
 
 # Used to get to the root directory
 repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
-# Ensure repo root is on sys.path so plotting module imports work
-if repo_root not in sys.path:
-    sys.path.insert(0, repo_root)
+# Ensure src is on sys.path so plotting module imports work
+src_root = os.path.join(repo_root, "src")
+if src_root not in sys.path:
+    sys.path.insert(0, src_root)
 
 # Import used to use combined dataset for BrdU % and smoothing 
-from plotting.S_Phase.S_phase_chromosome_plotting import prepare_dataframe, smooth_counts
+from plotting.S_Phase.genome_browser.S_phase_chromosome_plotting import (
+    prepare_dataframe,
+    smooth_counts,
+)
 
 def get_export_dir() -> str:
     """

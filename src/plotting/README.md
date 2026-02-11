@@ -28,23 +28,23 @@ BRDU_S_PCT_10KB_OUTPUT=/path/to/output/s_phase_10kb
 ```
 
 ## Scripts
-- **M_phase_chromosome_plotting.py**
+- **genome_browser/M_phase_chromosome_plotting.py**
   - Produces full-chromosome plots for M phase, including smoothed Coverage, BrdU counts, BrdU%, feature tracks, and subtelomeric regions.
-- **S_phase_chromosome_plotting.py**
+- **genome_browser/S_phase_chromosome_plotting.py**
   - Produces full-chromosome plots for S phase with the same tracks and styling as M phase.
-- **M_phase_chromosome_plotting_pct_10kb.py**
+- **POI_plots/M_phase_chromosome_plotting_pct_10kb.py**
   - Generates 10 kb window plots centered on the top 20 BrdU% locations from the M-phase CSV.
   - The BrdU% ruler uses the CSV value for the window center.
-- **S_phase_chromosome_plotting_pct.py**
+- **POI_plots/S_phase_chromosome_plotting_pct.py**
   - Generates 10 kb window plots centered on the top 20 BrdU% locations from the S-phase CSV.
   - The BrdU% ruler uses the CSV value for the window center.
 
 ## Usage
 ```bash
-python plotting/M_phase_chromosome_plotting.py
-python plotting/S_phase_chromosome_plotting.py
-python plotting/M_phase_chromosome_plotting_pct_10kb.py
-python plotting/S_phase_chromosome_plotting_pct.py
+python src/plotting/M_Phase/genome_browser/M_phase_chromosome_plotting.py
+python src/plotting/S_Phase/genome_browser/S_phase_chromosome_plotting.py
+python src/plotting/M_Phase/POI_plots/M_phase_chromosome_plotting_pct_10kb.py
+python src/plotting/S_Phase/POI_plots/S_phase_chromosome_plotting_pct.py
 ```
 
 ## Output

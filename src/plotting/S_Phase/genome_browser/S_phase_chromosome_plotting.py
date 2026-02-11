@@ -20,7 +20,7 @@ from matplotlib.ticker import ScalarFormatter
 
 
 # Load positive and negative bedgraphs
-REPO_ROOT = Path(__file__).resolve().parent.parent.parent
+REPO_ROOT = Path(__file__).resolve().parents[4]
 load_dotenv(dotenv_path=REPO_ROOT / "env" / ".env")
 
 
@@ -28,11 +28,11 @@ def load_bedgraph_data():
     """
     Load BrdU incorporation data from positive and negative strand bedgraph files.
     """
-    pos_path = os.getenv('POSITIVE_BEDGRAPH_M')
-    neg_path = os.getenv('NEGATIVE_BEDGRAPH_M')
+    pos_path = os.getenv('POSITIVE_BEDGRAPH_S')
+    neg_path = os.getenv('NEGATIVE_BEDGRAPH_S')
 
     if not pos_path or not neg_path:
-        raise ValueError("POSITIVE_BEDGRAPH_M and NEGATIVE_BEDGRAPH_M must be set in env/.env")
+        raise ValueError("POSITIVE_BEDGRAPH_S and NEGATIVE_BEDGRAPH_S must be set in env/.env")
 
     pos_df = pd.read_csv(
         pos_path,
@@ -55,7 +55,7 @@ def get_output_dir():
     """
     Determine the output directory for saving plots.
     """
-    output_dir = os.getenv("OUTPUT_DIR_M")
+    output_dir = os.getenv("OUTPUT_DIR_S")
     if not output_dir:
         output_dir = os.path.join(os.getcwd(), "output", "M_phase_pileup", "genome_browser")
     os.makedirs(output_dir, exist_ok=True)
@@ -505,7 +505,7 @@ def main():
         )
 
         ax.set_ylabel("Read count")
-        ax.set_title(f"Mitosis BrdU pileup along chromosome {chrom} (subtelomeres highlighted)")
+        ax.set_title(f"S Phase BrdU pileup along chromosome {chrom} (subtelomeres highlighted)")
         ax.set_xlim(0, chr_length)
         ax.set_ylim(0, 22)
         ax.set_xlabel("Genomic position (bp)")

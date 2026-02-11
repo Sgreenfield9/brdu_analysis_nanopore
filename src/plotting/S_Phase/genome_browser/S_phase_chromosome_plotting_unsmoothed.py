@@ -18,9 +18,12 @@ from dotenv import load_dotenv
 from typing import Optional
 from matplotlib.ticker import ScalarFormatter
 
+# Avoid Agg overflow on very large paths
+plt.rcParams["agg.path.chunksize"] = 10000
+
 
 # Load positive and negative bedgraphs
-REPO_ROOT = Path(__file__).resolve().parent.parent.parent
+REPO_ROOT = Path(__file__).resolve().parents[4]
 load_dotenv(dotenv_path=REPO_ROOT / "env" / ".env")
 
 
@@ -55,7 +58,7 @@ def get_output_dir():
     """
     Determine the output directory for saving plots.
     """
-    output_dir = os.getenv("OUTPUT_DIR_S")
+    output_dir = os.getenv("OUTPUT_DIR_S_UNSMOOTHED")
     if not output_dir:
         output_dir = os.path.join(os.getcwd(), "output", "M_phase_pileup", "genome_browser")
     os.makedirs(output_dir, exist_ok=True)
@@ -407,7 +410,7 @@ def add_all_rulers_panel(
         ax_cov,
         chrom_df=chrom_df,
         x_col="start",
-        y_col="Nmod_smooth", # Plots the Coverage
+        y_col="Nmod", # Plots the Coverage
         chr_length=chr_length,
         subtel_size=SUBTEL_SIZE,
         bin_size=bin_size,
@@ -418,7 +421,7 @@ def add_all_rulers_panel(
         ax_brd,
         chrom_df=chrom_df,
         x_col="start",
-        y_col="BrdU_smooth", # Plots the BrdU count
+        y_col="BrdU_count", # Plots the BrdU count
         chr_length=chr_length,
         subtel_size=SUBTEL_SIZE,
         bin_size=bin_size,
@@ -429,7 +432,7 @@ def add_all_rulers_panel(
         ax_brd_pct,
         chrom_df=chrom_df,
         x_col="start",
-        y_col="BrdU_pct_smooth", # Plots BrdU count / coverage (%)
+        y_col="BrdU_pct", # Plots BrdU count / coverage (%)
         chr_length=chr_length,
         subtel_size=SUBTEL_SIZE,
         bin_size=bin_size,
@@ -470,15 +473,12 @@ def main():
 
         chrom_df = chrom_df.sort_values("start").drop_duplicates(subset="start")
 
-        chrom_df["BrdU_smooth"] = smooth_counts(chrom_df["BrdU_count"], window=1000)
-        chrom_df["Nmod_smooth"] = smooth_counts(chrom_df["Nmod"], window=1000)
         chrom_df["BrdU_pct"] = np.where(
             chrom_df["Nmod"] > 0,
             100.0 * chrom_df["BrdU_count"] / chrom_df["Nmod"],
             np.nan
         )
         chrom_df.loc[chrom_df["BrdU_pct"] <= 0, "BrdU_pct"] = np.nan
-        chrom_df["BrdU_pct_smooth"] = smooth_counts(chrom_df["BrdU_pct"], window=1000)
 
         chr_length = int(chrom_lengths.get(chrom, chrom_df["end"].max()))
 
@@ -495,13 +495,33 @@ def main():
         ax.axvspan(0, SUBTEL_SIZE, alpha=0.2, color='red', label='Subtelomeric region')
         ax.axvspan(chr_length - SUBTEL_SIZE, chr_length, alpha=0.2, color='red')
 
+        # Display-only binning to reduce visual noise while preserving raw data
+        max_points = 200000
+        approx_sticks = 2000
+        display_bin_size = max(1, int(chr_length // approx_sticks))
+
+        xs = chrom_df["start"].to_numpy()
+        nmod = chrom_df["Nmod"].to_numpy()
+        brdu = chrom_df["BrdU_count"].to_numpy()
+
+        centers, nmod_binned = _binned_signal(xs, nmod, chr_length=chr_length, bin_size=display_bin_size)
+        _, brdu_binned = _binned_signal(xs, brdu, chr_length=chr_length, bin_size=display_bin_size)
+
+        if centers.size > max_points:
+            stride = max(1, int(np.ceil(centers.size / max_points)))
+            centers = centers[::stride]
+            nmod_binned = nmod_binned[::stride]
+            brdu_binned = brdu_binned[::stride]
+
         ax.fill_between(
-            chrom_df["start"], 0, chrom_df["Nmod_smooth"],
-            color='lightgrey', alpha=0.6, label="Coverage (Nmod, smoothed)"
+            centers, 0, nmod_binned,
+            color='lightgrey', alpha=0.6, label="Coverage (raw, binned for display)",
+            step="pre", rasterized=True
         )
-        ax.plot(
-            chrom_df["start"], chrom_df["BrdU_smooth"],
-            color='blue', linewidth=1, label="BrdU count (smoothed)"
+        ax.step(
+            centers, brdu_binned,
+            color='blue', linewidth=0.8, label="BrdU count (raw, binned for display)",
+            where="pre", rasterized=True
         )
 
         ax.set_ylabel("Read count")
@@ -551,7 +571,7 @@ def main():
             for t in list(cov_ax.texts):
                 if t.get_text().startswith("max="):
                     t.remove()
-            cov_max = float(chrom_df["Nmod_smooth"].max())
+            cov_max = float(chrom_df["Nmod"].max())
             if np.isfinite(cov_max):
                 cov_ax.text(
                     0.995, 0.82, f"max={cov_max:.2f}",
@@ -564,7 +584,7 @@ def main():
             for t in list(brdu_ax.texts):
                 if t.get_text().startswith("max="):
                     t.remove()
-            brdu_max = float(chrom_df["BrdU_smooth"].max())
+            brdu_max = float(chrom_df["BrdU_count"].max())
             if np.isfinite(brdu_max):
                 brdu_ax.text(
                     0.995, 0.82, f"max={brdu_max:.2f}",
@@ -577,7 +597,7 @@ def main():
             for t in list(brdu_pct_ax.texts):
                 if t.get_text().startswith("max="):
                     t.remove()
-            brdu_pct_max = float(chrom_df["BrdU_pct_smooth"].max())
+            brdu_pct_max = float(chrom_df["BrdU_pct"].max())
             if np.isfinite(brdu_pct_max):
                 brdu_pct_ax.text(
                     0.995, 0.82, f"max={brdu_pct_max:.2f}",

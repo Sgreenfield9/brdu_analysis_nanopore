@@ -1,17 +1,24 @@
+import os
+import sys
+from pathlib import Path
+
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
-import os
-from pathlib import Path
 from dotenv import load_dotenv
 from matplotlib.ticker import ScalarFormatter
 
-import S_phase_chromosome_plotting as s
+# Ensure src is on sys.path so plotting module imports work when run directly
+REPO_ROOT = Path(__file__).resolve().parents[4]
+SRC_ROOT = str(REPO_ROOT / "src")
+if SRC_ROOT not in sys.path:
+    sys.path.insert(0, SRC_ROOT)
+
+import plotting.S_Phase.genome_browser.S_phase_chromosome_plotting as s
 
 # Goes to the root directory and finds
 # the /env/.env directory and file respectively
 # to get the correct path
-REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 load_dotenv(dotenv_path=REPO_ROOT / "env" / ".env")
 
 def get_output_dir():

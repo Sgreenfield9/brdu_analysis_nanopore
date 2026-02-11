@@ -23,7 +23,7 @@ plt.rcParams["agg.path.chunksize"] = 10000
 
 
 # Load positive and negative bedgraphs
-REPO_ROOT = Path(__file__).resolve().parent.parent.parent
+REPO_ROOT = Path(__file__).resolve().parents[4]
 load_dotenv(dotenv_path=REPO_ROOT / "env" / ".env")
 
 
@@ -31,11 +31,11 @@ def load_bedgraph_data():
     """
     Load BrdU incorporation data from positive and negative strand bedgraph files.
     """
-    pos_path = os.getenv('POSITIVE_BEDGRAPH_S')
-    neg_path = os.getenv('NEGATIVE_BEDGRAPH_S')
+    pos_path = os.getenv('POSITIVE_BEDGRAPH_M')
+    neg_path = os.getenv('NEGATIVE_BEDGRAPH_M')
 
     if not pos_path or not neg_path:
-        raise ValueError("POSITIVE_BEDGRAPH_S and NEGATIVE_BEDGRAPH_S must be set in env/.env")
+        raise ValueError("POSITIVE_BEDGRAPH_M and NEGATIVE_BEDGRAPH_M must be set in env/.env")
 
     pos_df = pd.read_csv(
         pos_path,
@@ -58,7 +58,7 @@ def get_output_dir():
     """
     Determine the output directory for saving plots.
     """
-    output_dir = os.getenv("OUTPUT_DIR_S_UNSMOOTHED")
+    output_dir = os.getenv("OUTPUT_DIR_M_UNSMOOTHED")
     if not output_dir:
         output_dir = os.path.join(os.getcwd(), "output", "M_phase_pileup", "genome_browser")
     os.makedirs(output_dir, exist_ok=True)
@@ -495,18 +495,20 @@ def main():
         ax.axvspan(0, SUBTEL_SIZE, alpha=0.2, color='red', label='Subtelomeric region')
         ax.axvspan(chr_length - SUBTEL_SIZE, chr_length, alpha=0.2, color='red')
 
-        # Display-only binning to reduce visual noise while preserving raw data
+        # Downsample for display only to keep raw values but avoid huge paths
         max_points = 200000
+        stride = max(1, int(np.ceil(len(chrom_df) / max_points)))
+        xs = chrom_df["start"].to_numpy()[::stride]
+        nmod = chrom_df["Nmod"].to_numpy()[::stride]
+        brdu = chrom_df["BrdU_count"].to_numpy()[::stride]
+
+        # Display-only binning to reduce visual noise while preserving raw data
         approx_sticks = 2000
         display_bin_size = max(1, int(chr_length // approx_sticks))
-
-        xs = chrom_df["start"].to_numpy()
-        nmod = chrom_df["Nmod"].to_numpy()
-        brdu = chrom_df["BrdU_count"].to_numpy()
-
         centers, nmod_binned = _binned_signal(xs, nmod, chr_length=chr_length, bin_size=display_bin_size)
         _, brdu_binned = _binned_signal(xs, brdu, chr_length=chr_length, bin_size=display_bin_size)
 
+        # Downsample binned series further if still too dense
         if centers.size > max_points:
             stride = max(1, int(np.ceil(centers.size / max_points)))
             centers = centers[::stride]
@@ -525,7 +527,7 @@ def main():
         )
 
         ax.set_ylabel("Read count")
-        ax.set_title(f"S Phase BrdU pileup along chromosome {chrom} (subtelomeres highlighted)")
+        ax.set_title(f"Mitosis BrdU pileup along chromosome {chrom} (subtelomeres highlighted)")
         ax.set_xlim(0, chr_length)
         ax.set_ylim(0, 22)
         ax.set_xlabel("Genomic position (bp)")

@@ -51,11 +51,11 @@ in a .bed file format to make it easier to plot.
 python src/parsing/TE/TE_parser.py
 ```
 ## Results/Plotting 
-After performing the extraction and saving all the data we need in a .bed file format, we will use this to plot all the genome features. The source code for this can be found in **plotting/M_phase_chromosome_plotting.py**. We will get all the data we want from each chromosome in the genome and plot it. Here is an example:
+After performing the extraction and saving all the data we need in a .bed file format, we will use this to plot all the genome features. The source code for this can be found in **src/plotting/M_Phase/genome_browser/M_phase_chromosome_plotting.py**. We will get all the data we want from each chromosome in the genome and plot it. Here is an example:
 <!--- ![alt text](figures/plot_example.png) --->
 To produce these plots, run the following command:
 ```bash
-python plotting/M_phase_chromosome_plotting.py
+python src/plotting/M_Phase/genome_browser/M_phase_chromosome_plotting.py
 ```
 ## References/Resources
 ### NCBI

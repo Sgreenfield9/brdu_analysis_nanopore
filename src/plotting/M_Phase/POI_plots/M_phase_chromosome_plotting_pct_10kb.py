@@ -1,28 +1,34 @@
+import os
+import sys
+from pathlib import Path
+
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
-import os
-from pathlib import Path
 from dotenv import load_dotenv
 from matplotlib.ticker import ScalarFormatter
 
-import M_phase_chromosome_plotting_unsmoothed as m
+# Ensure src is on sys.path so plotting module imports work when run directly
+REPO_ROOT = Path(__file__).resolve().parents[4]
+SRC_ROOT = str(REPO_ROOT / "src")
+if SRC_ROOT not in sys.path:
+    sys.path.insert(0, SRC_ROOT)
+
+import plotting.M_Phase.genome_browser.M_phase_chromosome_plotting as m
 
 # Goes to the root directory and finds
 # the /env/.env directory and file respectively
 # to get the correct path
-REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 load_dotenv(dotenv_path=REPO_ROOT / "env" / ".env")
-
 
 def get_output_dir():
     """
     This gets the output directory for where we want to put our new plots. This will
     be given in the env/e.env
     """
-    output_dir = os.getenv("BRDU_M_UNSMOOTHED_PCT75")
+    output_dir = os.getenv("BRDU_M_PCT_10KB_OUTPUT_THRESHOLD")
     if not output_dir:
-        output_dir = os.path.join(os.getcwd(), "output", "M_Phase_pct_10kb_unsmoothed")
+        output_dir = os.path.join(os.getcwd(), "output", "M_Phase_pct_10kb")
     os.makedirs(output_dir, exist_ok=True)
     return Path(output_dir)
 
@@ -45,20 +51,20 @@ def load_M_pct_10kb():
 poi = load_M_pct_10kb().head(20)
 out_dir = get_output_dir()
 
-# Getting our data from the M_phase_chromosome_plotting_unsmoothed.py
+# Getting our data from the M_phase_chromosome_plotting.py
 df = m.prepare_dataframe()
 g4_df = m.load_g4_motifs()
 trna_df = m.load_trna_motifs()
 te_df = m.load_te_motifs_all()
 
-# Cache per-chromosome dataframe once
-chrom_cache = {}  # chrom -> (chrom_df, chr_length)
+# Cache per-chromosome smoothed dataframe once
+chrom_cache = {}  # chrom -> (chrom_df_smoothed, chr_length)
 
 for _, row in poi.iterrows():
     chrom = str(row["chrom"])
     center = int(row["start"])
 
-    # Build / reuse cached chromosome dataframe (sorted) once per chrom
+    # Build / reuse cached chromosome dataframe (sorted + smoothed) once per chrom
     if chrom not in chrom_cache:
         chrom_df = df[df["chrom"] == chrom].copy()
         if chrom_df.empty:
@@ -66,12 +72,16 @@ for _, row in poi.iterrows():
         else:
             chrom_df = chrom_df.sort_values("start").drop_duplicates(subset="start")
 
+            # Smooth + compute % ONCE per chromosome
+            chrom_df["BrdU_smooth"] = m.smooth_counts(chrom_df["BrdU_count"], window=1000)
+            chrom_df["Nmod_smooth"] = m.smooth_counts(chrom_df["Nmod"], window=1000)
             chrom_df["BrdU_pct"] = np.where(
                 chrom_df["Nmod"] > 0,
                 100.0 * chrom_df["BrdU_count"] / chrom_df["Nmod"],
                 np.nan
             )
             chrom_df.loc[chrom_df["BrdU_pct"] <= 0, "BrdU_pct"] = np.nan
+            chrom_df["BrdU_pct_smooth"] = m.smooth_counts(chrom_df["BrdU_pct"], window=1000)
 
             chr_length = int(m.chrom_lengths.get(chrom, chrom_df["end"].max()))
             chrom_cache[chrom] = (chrom_df, chr_length)
@@ -113,30 +123,14 @@ for _, row in poi.iterrows():
     ax.axvspan(0, m.SUBTEL_SIZE, alpha=0.2, color='red', label='Subtelomeric region')
     ax.axvspan(chr_length - m.SUBTEL_SIZE, chr_length, alpha=0.2, color='red')
 
-    # Plot ONLY the window (raw values, lightly binned for display)
-    xs = chrom_window["start"].to_numpy()
-    nmod = chrom_window["Nmod"].to_numpy()
-    brdu = chrom_window["BrdU_count"].to_numpy()
-
-    window_len = max(1, right - left)
-    approx_sticks = 2000
-    display_bin_size = max(1, int(window_len // approx_sticks))
-    xs_rel = xs - left
-    centers, nmod_binned = m._binned_signal(xs_rel, nmod, chr_length=window_len, bin_size=display_bin_size)
-    _, brdu_binned = m._binned_signal(xs_rel, brdu, chr_length=window_len, bin_size=display_bin_size)
-
-    # Shift binned centers back into genomic coordinates within the window
-    centers = centers + left
-
+    # Plot ONLY the window
     ax.fill_between(
-        centers, 0, nmod_binned,
-        color='lightgrey', alpha=0.6, label="Coverage (raw, binned for display)",
-        step="pre", rasterized=True
+        chrom_window["start"], 0, chrom_window["Nmod_smooth"],
+        color='lightgrey', alpha=0.6, label="Coverage (Nmod, smoothed)"
     )
-    ax.step(
-        centers, brdu_binned,
-        color='blue', linewidth=0.8, label="BrdU count (raw, binned for display)",
-        where="pre", rasterized=True
+    ax.plot(
+        chrom_window["start"], chrom_window["BrdU_smooth"],
+        color='blue', linewidth=1, label="BrdU count (smoothed)"
     )
 
     ax.set_ylabel("Read count")
@@ -186,7 +180,7 @@ for _, row in poi.iterrows():
         for t in list(cov_ax.texts):
             if t.get_text().startswith("max="):
                 t.remove()
-        cov_max = float(chrom_window["Nmod"].max())
+        cov_max = float(chrom_window["Nmod_smooth"].max())
         if np.isfinite(cov_max):
             cov_ax.text(
                 0.995, 0.82, f"max={cov_max:.2f}",
@@ -199,7 +193,7 @@ for _, row in poi.iterrows():
         for t in list(brdu_ax.texts):
             if t.get_text().startswith("max="):
                 t.remove()
-        brdu_max = float(chrom_window["BrdU_count"].max())
+        brdu_max = float(chrom_window["BrdU_smooth"].max())
         if np.isfinite(brdu_max):
             brdu_ax.text(
                 0.995, 0.82, f"max={brdu_max:.2f}",
@@ -228,5 +222,7 @@ for _, row in poi.iterrows():
 
     # Faster saves while iterating
     fig.subplots_adjust(right=0.80)
-    fig.savefig(save_path, dpi=250)
+    fig.savefig(save_path, dpi=250)  
     plt.close(fig)
+
+print("wrote", out_dir)
