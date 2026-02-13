@@ -40,6 +40,15 @@ def get_output_dir():
     os.makedirs(output_dir, exist_ok=True)
     return output_dir
 
+# Map GenBank IDs to chromosome numbers
+genbank_to_chr = {
+    "CM007964.1": "1",  "CM007965.1": "2",  "CM007966.1": "3",  "CM007967.1": "4",
+    "CM007968.1": "5",  "CM007969.1": "6",  "CM007970.1": "7",  "CM007971.1": "8",
+    "CM007972.1": "9",  "CM007973.1": "10", "CM007974.1": "11", "CM007975.1": "12",
+    "CM007976.1": "13", "CM007977.1": "14", "CM007978.1": "15", "CM007979.1": "16",
+    "CM007980.1": "p2-micron", "CM007981.1": "MT"
+}
+
 def plot_rainplots_per_read():
     """
     Rain plots (up to first 100 reads) using adaptive/equal count binning.
@@ -85,6 +94,15 @@ def plot_rainplots_per_read():
         # to ensure it increases from left-to-right
         # This helps with ordering
         sub = sub.sort_values("start", kind="mergesort")
+
+        # Assinging the genbank ids to a chr_label
+        # Making sure there are no duplicates and that all 
+        # chromosomes are present
+        genbank_ids = sub["chrom"].astype(str).unique()
+        if len(genbank_ids) == 1:
+            chr_label = genbank_to_chr.get(genbank_ids[0], genbank_ids[0])
+        else:
+            chr_label = "mixed/" + ",".join(genbank_to_chr.get(g, g) for g in genbank_ids)
 
         # X axis: kb position within this read (relative)
         read_start = sub["start"].min()
@@ -172,7 +190,7 @@ def plot_rainplots_per_read():
         ax.set_ylim(0, 1)
         ax.set_xlabel("Position within read (kb)")
         ax.set_ylabel("BrdU probability (0–1)")
-        ax.set_title(f"Mitosis Rain Plot - Read {i}")
+        ax.set_title(f"Mitosis Rain Plot - Read {i}\n Chromosome: {chr_label}")
 
         outpath = os.path.join(outdir, f"rainplot_{i:03d}_read_{i}.png")
         fig.tight_layout()
