@@ -14,10 +14,10 @@ def load_rain_plot_input():
     Finds our rainplot input file path. It will then convert
     that file into a pandas dataframe to make it easier/faster to plot.
     """
-    rain_plot_path = os.getenv("INPUT_FILE_RP_S")
+    rain_plot_path = os.getenv("INPUT_FILE_RP_rDNA")
 
     if not rain_plot_path:
-        raise ValueError("INPUT_FILE_RP must be set in the env/.env")
+        raise ValueError("INPUT_FILE_RP_rDNA must be set in the env/.env")
 
     rain_plot_df = pd.read_csv(
         rain_plot_path,
@@ -33,7 +33,7 @@ def get_output_dir():
     """
     Determine the output directory for the rain plots
     """
-    output_dir = os.getenv("OUTPUT_FILE_RP_S")
+    output_dir = os.getenv("OUTPUT_FILE_RP_rDNA")
 
     if not output_dir:
         output_dir = os.path.join(os.getcwd(), "output", "rain_plot")
@@ -79,11 +79,12 @@ def plot_rainplots_per_read():
     # We can also change the value to whatever we'd like
     max_reads = 100
 
-    # Binning control
-    points_per_bin = 200  # Can change to 100 for more detail, 500 for smoother plots
-    show_scatter = True   # Show the scatter, we can change to False if we don't want scatter
+    
+    min_T_count = 1500 # change this number to whatever threshold you want
 
-    min_T_count = 2250 # change this number to whatever threshold you want
+    # This is the code that makes it random each time you run the script.
+    # Comment this block out if you want the first 100 reads every time.
+    rng = np.random.default_rng()
 
     # Normalize mod_base in case of lowercase / weird formatting
     df["mod_base"] = df["mod_base"].astype(str).str.upper()
@@ -105,6 +106,7 @@ def plot_rainplots_per_read():
         )
 
     # Then: filter those eligible reads so we do not get flat lines
+    points_per_bin = 25  # Can change to 100 for more detail, 500 for smoother plots
     min_q_spread = 0.30
     min_bin_range = 0.20
 
@@ -150,7 +152,16 @@ def plot_rainplots_per_read():
             f"Try lowering min_q_spread={min_q_spread} or min_bin_range={min_bin_range}."
         )
 
-    df = df[df["read_id"].isin(eligible_ids)]
+    # Then: sample up to max_reads from those eligible reads
+    if eligible_ids.size > max_reads:
+        sampled_ids = rng.choice(eligible_ids, size=max_reads, replace=False)
+    else:
+        sampled_ids = eligible_ids
+
+    df = df[df["read_id"].isin(sampled_ids)]
+
+    # Binning control
+    show_scatter = True   # Show the scatter, we can change to False if we don't want scatter
 
    # Iterate through each read (we have 100 reads in our dataset)
    # Each read is given a "group id", we start at 1 and go to 100

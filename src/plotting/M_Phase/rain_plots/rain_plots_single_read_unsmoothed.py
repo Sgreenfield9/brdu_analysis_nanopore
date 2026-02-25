@@ -68,6 +68,76 @@ def plot_rainplots_per_read():
 
     max_reads = 100
 
+    min_T_count = 2250 # change this number to whatever threshold you want
+
+    # Normalize mod_base in case of lowercase / weird formatting
+    df["mod_base"] = df["mod_base"].astype(str).str.upper()
+
+    # First: compute T counts per read, then filter to reads that pass threshold
+    per_read = (
+        df.groupby("read_id", as_index=False)
+          .agg(
+              T_count=("mod_base", lambda s: (s == "T").sum())
+          )
+    )
+
+    eligible_ids = per_read.loc[per_read["T_count"] >= min_T_count, "read_id"].to_numpy()
+
+    if eligible_ids.size == 0:
+        raise ValueError(
+            f"No reads passed the T threshold. min_T_count={min_T_count}. "
+            f"Lower min_T_count or verify mod_base contains 'T'."
+        )
+
+    # Then: filter those eligible reads so we do not get flat lines
+    points_per_bin = 200  # Can change to 100 for more detail, 500 for smoother plots
+    min_q_spread = 0.30
+    min_bin_range = 0.20
+
+    df_eligible = df[df["read_id"].isin(eligible_ids)]
+    var_keep_ids = []
+
+    for rid, sub in df_eligible.groupby("read_id", sort=False):
+        sub = sub.sort_values("start", kind="mergesort")
+        y = sub["mod_prob"].to_numpy(dtype=float)
+
+        if y.size < 10:
+            continue
+
+        q05 = float(np.quantile(y, 0.05))
+        q95 = float(np.quantile(y, 0.95))
+        q_spread = q95 - q05
+        if q_spread < min_q_spread:
+            continue
+
+        n = y.size
+        n_bins = max(1, int(np.ceil(n / points_per_bin)))
+        idx_chunks = np.array_split(np.arange(n), n_bins)
+        y_vals_tmp = []
+        for idx in idx_chunks:
+            if idx.size == 0:
+                continue
+            y_vals_tmp.append(float(np.mean(y[idx])))
+
+        if len(y_vals_tmp) < 2:
+            continue
+
+        bin_range = max(y_vals_tmp) - min(y_vals_tmp)
+        if bin_range < min_bin_range:
+            continue
+
+        var_keep_ids.append(rid)
+
+    eligible_ids = np.asarray(var_keep_ids, dtype=object)
+
+    if eligible_ids.size == 0:
+        raise ValueError(
+            f"No reads passed the variability filter. "
+            f"Try lowering min_q_spread={min_q_spread} or min_bin_range={min_bin_range}."
+        )
+
+    df = df[df["read_id"].isin(eligible_ids)]
+
    # Iterate through each read (we have 100 reads in our dataset)
    # Each read is given a "group id", we start at 1 and go to 100
    # This helps us sort the reads, along with making sure each read
