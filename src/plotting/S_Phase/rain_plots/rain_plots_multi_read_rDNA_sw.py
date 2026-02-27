@@ -55,21 +55,14 @@ def plot_rainplots_per_read():
     Rain plots (up to first 100 reads) using adaptive/equal count binning.
 
     Idea:
-      - Instead of fixed-width bins (e.g., every 0.2 kb), we create bins that each contain
-        roughly the same number of points (bases) from the read.
-      - Dense regions -> narrower bins (more x-resolution)
-      - Sparse regions -> wider bins (more smoothing)
+       - We now compute the stairs using a sliding window of 100 T bases.
+       - For each window we calculate the proportion of T bases with mod_prob > 0.50.
+       - That proportion (0 to 1) is what we plot as the "stairs".
 
     Plot:
       - Optional scatter at bin centers (black)
       - Step curve using ax.stairs(values, edges, fill=False)
     """
-    # NOTE:
-    # We are keeping the docstring above unchanged (per your request).
-    # New behavior:
-    #   - We now compute the stairs using a sliding window of 100 T bases.
-    #   - For each window we calculate the proportion of T bases with mod_prob > 0.50.
-    #   - That proportion (0 to 1) is what we plot as the "stairs".
 
     # Using input function to get the df for plotting
     df = load_rain_plot_input()
@@ -95,24 +88,19 @@ def plot_rainplots_per_read():
     # Normalize mod_base in case of lowercase / weird formatting
     df["mod_base"] = df["mod_base"].astype(str).str.upper()
 
-    # -----------------------------
-    # NEW: sliding window controls
-    # -----------------------------
+
     window_T = 75            # Sliding window size in number of T bases
     prob_thresh = 0.50       # "above 50%" threshold for mod_prob
 
-    # NEW CODE:
     # Instead of overlaying multiple read stairs, we compute ONE averaged stair
     # per group of reads by binning each read onto a common kb-axis and averaging.
     reads_per_plot = 5       # Change this number to control how many reads are averaged per plot
     max_plots = 50           # Change this number to generate more than 20 plots
 
-    # NEW CODE:
     # Common kb bins (this controls the "stair resolution" of the averaged curve)
     kb_bin = 0.10            # 0.10 kb = 100 bp bins (increase to 0.2/0.5 for smoother)
     max_kb = 12.0            # Maximum x-range to support (in kb) for averaging across reads
 
-    # NEW CODE:
     # Require that the averaged curve has at least one bin >= 0.05
     # (prevents averaged flat plots)
     min_avg_peak = 0.05
@@ -125,7 +113,6 @@ def plot_rainplots_per_read():
           )
     )
 
-    # NEW: ensure reads have enough T's to form at least one window
     min_T_count = max(min_T_count, window_T)
 
     eligible_ids = per_read.loc[per_read["T_count"] >= min_T_count, "read_id"].to_numpy()
@@ -137,7 +124,6 @@ def plot_rainplots_per_read():
         )
 
     # Then: filter those eligible reads so we do not get flat lines
-    # NEW:
     # We keep your variability checks but now they operate on the per-read rolling proportion signal.
     min_prop_spread = 0.10
     min_prop_range = 0.10
@@ -163,7 +149,6 @@ def plot_rainplots_per_read():
         if prop.size < 2:
             continue
 
-        # NEW CODE:
         # Ensure each read has at least one window with some signal
         if float(prop.max()) < min_prop_peak:
             continue
@@ -201,13 +186,11 @@ def plot_rainplots_per_read():
     # Optional scatter: we will plot the raw points from ALL reads in the group (like your old plots)
     show_scatter = True
 
-    # NEW CODE:
     # Create common bin edges for averaging (stairs will use these edges)
     # Example: kb_bin=0.1 -> edges at 0.0, 0.1, 0.2, ... max_kb
     bin_edges = np.arange(0.0, max_kb + kb_bin, kb_bin, dtype=float)
     bin_centers = (bin_edges[:-1] + bin_edges[1:]) / 2.0
 
-    # NEW CODE:
     # We will walk reads in order and process in groups of reads_per_plot.
     grouped = list(df.groupby("read_id", sort=False))
 
@@ -258,7 +241,6 @@ def plot_rainplots_per_read():
             window_sum = csum[window_T - 1:] - np.concatenate(([0], csum[:-window_T]))
             prop_above = window_sum / float(window_T)
 
-            # NEW CODE:
             # Each rolling window corresponds to a window start index in xT.
             # We map each window's prop_above to the kb position of its window-start,
             # then bin onto our common kb bins so different reads can be averaged.
@@ -285,19 +267,16 @@ def plot_rainplots_per_read():
             group_start_index += reads_per_plot
             continue
 
-        # NEW CODE:
         # Average across reads per bin, ignoring NaNs
         stacked = np.vstack(per_read_binned)
         avg_curve = np.nanmean(stacked, axis=0)
 
-        # NEW CODE:
         # If the averaged curve is basically flat (no signal), skip saving this plot
         # (also helps avoid the "all zeros" look)
         if not np.isfinite(avg_curve).any() or float(np.nanmax(avg_curve)) < min_avg_peak:
             group_start_index += reads_per_plot
             continue
 
-        # NEW CODE:
         # Convert avg_curve into stairs values/edges by dropping bins that are all NaN
         valid_bins = np.isfinite(avg_curve)
         if valid_bins.sum() < 2:

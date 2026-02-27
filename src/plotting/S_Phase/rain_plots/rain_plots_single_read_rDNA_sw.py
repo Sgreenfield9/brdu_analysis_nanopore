@@ -55,21 +55,14 @@ def plot_rainplots_per_read():
     Rain plots (up to first 100 reads) using adaptive/equal count binning.
 
     Idea:
-      - Instead of fixed-width bins (e.g., every 0.2 kb), we create bins that each contain
-        roughly the same number of points (bases) from the read.
-      - Dense regions -> narrower bins (more x-resolution)
-      - Sparse regions -> wider bins (more smoothing)
+      - We now compute the stairs using a sliding window of 100 T bases.
+      - For each window we calculate the proportion of T bases with mod_prob > 0.50.
+      - That proportion (0 to 1) is what we plot as the "stairs".
 
     Plot:
       - Optional scatter at bin centers (black)
       - Step curve using ax.stairs(values, edges, fill=False)
     """
-    # NOTE:
-    # We are keeping the docstring above unchanged (per your request).
-    # New behavior:
-    #   - We now compute the stairs using a sliding window of 100 T bases.
-    #   - For each window we calculate the proportion of T bases with mod_prob > 0.50.
-    #   - That proportion (0 to 1) is what we plot as the "stairs".
 
     # Using input function to get the df for plotting
     df = load_rain_plot_input()
@@ -96,14 +89,10 @@ def plot_rainplots_per_read():
     # Normalize mod_base in case of lowercase / weird formatting
     df["mod_base"] = df["mod_base"].astype(str).str.upper()
 
-    # -----------------------------
-    # NEW: sliding window controls
-    # -----------------------------
-    window_T = 100         # Sliding window size in number of T bases
+    window_T = 50    # Sliding window size in number of T bases
     step_T = 20              # Slide by 1 T at a time (increase to 5/10/25 to speed up + reduce steps)
     prob_thresh = 0.50      # "above 50%" threshold for mod_prob
 
-    # NEW CODE:
     # Require at least one rolling window to have >= 5% of T bases above 0.50.
     # This prevents flat plots where all rolling windows are 0.
     min_prop_peak = 0.05
@@ -116,7 +105,7 @@ def plot_rainplots_per_read():
           )
     )
 
-    # NEW: ensure reads have enough T's to form at least one window
+    # Ensure reads have enough T's to form at least one window
     min_T_count = max(min_T_count, window_T)
 
     eligible_ids = per_read.loc[per_read["T_count"] >= min_T_count, "read_id"].to_numpy()
@@ -131,8 +120,7 @@ def plot_rainplots_per_read():
     # points_per_bin = 25  # Can change to 100 for more detail, 500 for smoother plots
     # min_q_spread = 0.30
     # min_bin_range = 0.20
-    #
-    # NEW:
+
     # The "flat line" check now uses the rolling-window proportions (not equal-count bins).
     # This keeps reads whose rolling T-window signal actually varies.
     min_prop_spread = 0.10  # How much the rolling signal should vary between 5th and 95th percentiles
@@ -144,7 +132,7 @@ def plot_rainplots_per_read():
     for rid, sub in df_eligible.groupby("read_id", sort=False):
         sub = sub.sort_values("start", kind="mergesort")
 
-        # NEW: Keep only T bases for the rolling window calculation
+        # Keep only T bases for the rolling window calculation
         sub_T = sub[sub["mod_base"] == "T"]
 
         # If we don't have enough T's, we cannot compute a 100-T rolling window
@@ -153,17 +141,14 @@ def plot_rainplots_per_read():
 
         yT = sub_T["mod_prob"].to_numpy(dtype=float)
 
-        # NEW:
         # Convert to a 0/1 vector: 1 means mod_prob > 0.50, else 0
         above = (yT > prob_thresh).astype(np.int32)
 
-        # NEW:
         # Efficient rolling sum using cumulative sum:
         # window_sum[i] = sum(above[i : i+window_T])
         csum = np.cumsum(above, dtype=np.int64)
         window_sum = csum[window_T - 1:] - np.concatenate(([0], csum[:-window_T]))
 
-        # NEW:
         # Convert rolling sum into rolling proportion (0 to 1)
         prop = window_sum / float(window_T)
 
@@ -171,13 +156,11 @@ def plot_rainplots_per_read():
         if prop.size < 2:
             continue
 
-        # NEW CODE:
         # If no rolling window ever reaches >= 0.05 (5%) above-threshold T's,
         # this read will look basically flat at 0, so we skip it.
         if float(prop.max()) < min_prop_peak:
             continue
 
-        # NEW:
         # Variability checks on the rolling proportion signal
         q05 = float(np.quantile(prop, 0.05))
         q95 = float(np.quantile(prop, 0.95))
@@ -243,9 +226,6 @@ def plot_rainplots_per_read():
         if n < 2:
             continue
 
-        # ---------------------------------------------
-        # NEW: Sliding window "stairs" over T bases only
-        # ---------------------------------------------
         # Filter to T bases only (these are the bases we slide over)
         sub_T = sub[sub["mod_base"] == "T"]
 
@@ -269,7 +249,6 @@ def plot_rainplots_per_read():
         # Rolling proportion (this is the "stair height")
         prop_above = window_sum / float(window_T)
 
-        # NEW CODE:
         # Safety check: skip plotting if the rolling signal never reaches our minimum peak
         if float(np.max(prop_above)) < min_prop_peak:
             continue
@@ -308,7 +287,6 @@ def plot_rainplots_per_read():
             ax.scatter(x, y, s=1, color="black", alpha=0.3)
 
         # Stair style plot
-        # NEW:
         # y-values now represent the proportion of T's above 0.50
         # within a rolling window of 100 T bases.
         ax.stairs(prop_above, edges, linewidth=2, color="black", fill=False)

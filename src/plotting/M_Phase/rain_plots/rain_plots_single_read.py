@@ -256,6 +256,15 @@ def plot_rainplots_per_read():
         # Stair style plot
         ax.stairs(y_vals, edges, linewidth=2, color="black", fill=False)
 
+        # 50% BrdU probability reference line
+        ax.axhline(
+            y=0.50,
+            color="red",
+            linestyle="--",
+            linewidth=1.5,
+            alpha=0.8
+        )
+
         ax.set_ylim(0, 1)
         ax.set_xlabel("Position within read (kb)")
         ax.set_ylabel("BrdU probability (0–1)")

@@ -29,6 +29,28 @@ def load_rain_plot_input():
     return rain_plot_df
 
 
+def load_rfb_coords():
+    """
+    Load RFB coordinates per read. Expected columns:
+    read_id, chrom, strand, read_pos_start, read_pos_end, ref_start, ref_end
+    """
+    rfb_path = REPO_ROOT / "data" / "S_Phase" / "rDNA" / "fasta" / "RFB_coords.tsv"
+    if not rfb_path.exists():
+        return pd.DataFrame()
+
+    rfb_df = pd.read_csv(rfb_path, sep="\t")
+    if "read_id" not in rfb_df.columns:
+        return pd.DataFrame()
+
+    # Normalize and coerce numeric columns
+    rfb_df["read_id"] = rfb_df["read_id"].astype(str)
+    for col in ["read_pos_start", "read_pos_end", "ref_start", "ref_end"]:
+        if col in rfb_df.columns:
+            rfb_df[col] = pd.to_numeric(rfb_df[col], errors="coerce")
+
+    return rfb_df
+
+
 def get_output_dir():
     """
     Determine the output directory for the rain plots
@@ -66,6 +88,7 @@ def plot_rainplots_per_read():
     """
     # Using input function to get the df for plotting
     df = load_rain_plot_input()
+    rfb_df = load_rfb_coords()
     # Stating where our output directory is located
     outdir = get_output_dir()
 
@@ -80,7 +103,7 @@ def plot_rainplots_per_read():
     max_reads = 100
 
     
-    min_T_count = 1500 # change this number to whatever threshold you want
+    min_T_count = 800 # change this number to whatever threshold you want
 
     # This is the code that makes it random each time you run the script.
     # Comment this block out if you want the first 100 reads every time.
@@ -107,8 +130,8 @@ def plot_rainplots_per_read():
 
     # Then: filter those eligible reads so we do not get flat lines
     points_per_bin = 25  # Can change to 100 for more detail, 500 for smoother plots
-    min_q_spread = 0.30
-    min_bin_range = 0.20
+    min_q_spread = 0.20 # was 0.30
+    min_bin_range = 0.12 # as 0.20
 
     df_eligible = df[df["read_id"].isin(eligible_ids)]
     var_keep_ids = []
@@ -150,6 +173,19 @@ def plot_rainplots_per_read():
         raise ValueError(
             f"No reads passed the variability filter. "
             f"Try lowering min_q_spread={min_q_spread} or min_bin_range={min_bin_range}."
+        )
+
+    # Restrict to reads that have RFB coordinates
+    if rfb_df.empty:
+        raise ValueError("RFB_coords.tsv is missing or empty; cannot plot RFB lines.")
+
+    rfb_read_ids = set(rfb_df["read_id"].astype(str))
+    eligible_ids = np.asarray([rid for rid in eligible_ids if str(rid) in rfb_read_ids], dtype=object)
+
+    if eligible_ids.size == 0:
+        raise ValueError(
+            "No reads passed filters AND had RFB coords. "
+            "Lower thresholds or verify RFB_coords.tsv read_ids match the rain input."
         )
 
     # Then: sample up to max_reads from those eligible reads
@@ -264,9 +300,44 @@ def plot_rainplots_per_read():
         if show_scatter:
             ax.scatter(x, y, s=1, color="black", alpha=0.3)
 
+        # RFB region (per read) as dashed red vertical lines
+        if not rfb_df.empty:
+            rid = str(sub["read_id"].iloc[0])
+            rfb_row = rfb_df[rfb_df["read_id"] == rid]
+            if not rfb_row.empty:
+                rfb_row = rfb_row.iloc[0]
+                rfb_start = rfb_row.get("read_pos_start", np.nan)
+                rfb_end = rfb_row.get("read_pos_end", np.nan)
+
+                # Fallback to reference coords if read positions are missing
+                if pd.isna(rfb_start) or pd.isna(rfb_end):
+                    rfb_start = rfb_row.get("ref_start", np.nan)
+                    rfb_end = rfb_row.get("ref_end", np.nan)
+                    if not pd.isna(rfb_start):
+                        rfb_start = (rfb_start - read_start) / 1000.0
+                    if not pd.isna(rfb_end):
+                        rfb_end = (rfb_end - read_start) / 1000.0
+                else:
+                    rfb_start = rfb_start / 1000.0
+                    rfb_end = rfb_end / 1000.0
+
+                if not pd.isna(rfb_start) and not pd.isna(rfb_end):
+                    if rfb_end < rfb_start:
+                        rfb_start, rfb_end = rfb_end, rfb_start
+                    ax.axvline(rfb_start, color="red", linestyle="--", linewidth=1.5)
+                    ax.axvline(rfb_end, color="red", linestyle="--", linewidth=1.5)
 
         # Stair style plot
         ax.stairs(y_vals, edges, linewidth=2, color="black", fill=False)
+
+        # 50% BrdU probability reference line
+        ax.axhline(
+            y=0.50,
+            color="red",
+            linestyle="--",
+            linewidth=1.5,
+            alpha=0.8
+)
 
         ax.set_ylim(0, 1)
         ax.set_xlabel("Position within read (kb)")
