@@ -3,7 +3,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 import matplotlib.pyplot as plt
 import pandas as pd
-import numpy as np 
+import numpy as np
 
 REPO_ROOT = Path(__file__).resolve().parents[4]
 load_dotenv(dotenv_path=REPO_ROOT / "env" / ".env")
@@ -50,6 +50,7 @@ genbank_to_chr = {
     "CM007980.1": "p2-micron", "CM007981.1": "MT"
 }
 
+
 def plot_rainplots_per_read():
     """
     Rain plots (up to first 100 reads) using adaptive/equal count binning.
@@ -80,13 +81,17 @@ def plot_rainplots_per_read():
     max_reads = 100
 
     # Binning control
-    points_per_bin = 200  # Can change to 100 for more detail, 500 for smoother plots
+    # points_per_bin = 200  # Can change to 100 for more detail, 500 for smoother plots
     show_scatter = True   # Show the scatter, we can change to False if we don't want scatter
 
-    min_T_count = 2250 # change this number to whatever threshold you want
+    min_T_count = 2250  # change this number to whatever threshold you want
 
     # Normalize mod_base in case of lowercase / weird formatting
     df["mod_base"] = df["mod_base"].astype(str).str.upper()
+
+    # T-based sliding window controls
+    t_window = 100   # Meaning we will grab 100 T's no matter how many bases it is
+    t_step = 50      # Slide by this many T's each bin (set to 1 for maximum detail)
 
     # First: compute T counts per read, then filter to reads that pass threshold
     per_read = (
@@ -113,7 +118,9 @@ def plot_rainplots_per_read():
 
     for rid, sub in df_eligible.groupby("read_id", sort=False):
         sub = sub.sort_values("start", kind="mergesort")
+
         y = sub["mod_prob"].to_numpy(dtype=float)
+        bases = sub["mod_base"].to_numpy(dtype=object)
 
         if y.size < 10:
             continue
@@ -124,14 +131,18 @@ def plot_rainplots_per_read():
         if q_spread < min_q_spread:
             continue
 
-        n = y.size
-        n_bins = max(1, int(np.ceil(n / points_per_bin)))
-        idx_chunks = np.array_split(np.arange(n), n_bins)
+        # Variability check using the same T-sliding bins we will plot
+        t_idx = np.flatnonzero(bases == "T")
+        if t_idx.size < t_window:
+            continue
+
         y_vals_tmp = []
-        for idx in idx_chunks:
-            if idx.size == 0:
+        for j in range(0, t_idx.size - t_window + 1, t_step):
+            left_i = int(t_idx[j])
+            right_i = int(t_idx[j + t_window - 1])
+            if right_i <= left_i:
                 continue
-            y_vals_tmp.append(float(np.mean(y[idx])))
+            y_vals_tmp.append(float(np.mean(y[left_i:right_i + 1])))
 
         if len(y_vals_tmp) < 2:
             continue
@@ -152,10 +163,10 @@ def plot_rainplots_per_read():
 
     df = df[df["read_id"].isin(eligible_ids)]
 
-   # Iterate through each read (we have 100 reads in our dataset)
-   # Each read is given a "group id", we start at 1 and go to 100
-   # This helps us sort the reads, along with making sure each read
-   # is unique and has no duplicates
+    # Iterate through each read (we have 100 reads in our dataset)
+    # Each read is given a "group id", we start at 1 and go to 100
+    # This helps us sort the reads, along with making sure each read
+    # is unique and has no duplicates
     for i, (_, sub) in enumerate(df.groupby("read_id", sort=False), start=1):
         if i > max_reads:
             break
@@ -166,7 +177,7 @@ def plot_rainplots_per_read():
         sub = sub.sort_values("start", kind="mergesort")
 
         # Assinging the genbank ids to a chr_label
-        # Making sure there are no duplicates and that all 
+        # Making sure there are no duplicates and that all
         # chromosomes are present
         genbank_ids = sub["chrom"].astype(str).unique()
         if len(genbank_ids) == 1:
@@ -177,82 +188,70 @@ def plot_rainplots_per_read():
         # X axis: kb position within this read (relative)
         read_start = sub["start"].min()
         x = (sub["start"].to_numpy() - read_start) / 1000.0
-        y = sub["mod_prob"].to_numpy()
+        y = sub["mod_prob"].to_numpy(dtype=float)
+        bases = sub["mod_base"].to_numpy(dtype=object)
 
         # Get the number of bases in a genomic read
-        # If less than two we will skip 
+        # If less than two we will skip
         n = len(x)
         if n < 2:
             continue
 
-        # Number of bins (at least 1)
-        n_bins = max(1, int(np.ceil(n / points_per_bin)))
+        # Build bins using sliding windows of T's
+        t_idx = np.flatnonzero(bases == "T")
+        if t_idx.size < t_window:
+            # Not enough T's for the requested window, skip safely
+            continue
 
-        # Split indices into equal-count chunks
-        idx_chunks = np.array_split(np.arange(n), n_bins)
-
-        # Build adaptive edges and per-bin y values
         edges = [x[0]]
         y_vals = []
         centers = []
 
-        for idx in idx_chunks:
-            if idx.size == 0:
+        for j in range(0, t_idx.size - t_window + 1, t_step):
+            left_i = int(t_idx[j])
+            right_i = int(t_idx[j + t_window - 1])
+
+            # Convert to x-range (kb) for this window
+            x_left = float(x[left_i])
+            x_right = float(x[right_i])
+
+            # If for some reason positions collapse, skip that window
+            if x_right < x_left:
                 continue
 
-            # ensure chunk x is monotonic (it is, since sub sorted by start)
-            # What I mean by monotonic is that it's not really increasing
-            # or decreasing (staying consistent)
-            x_left = x[idx[0]]
-            x_right = x[idx[-1]]
-
-            # If multiple points share the same x, x_right may equal x_left; that's okay,
-            # but stairs prefers non-decreasing edges.
+            # Make edges non-decreasing for stairs
             edges.append(x_right)
 
-            # Representative y for the bin (Currently mean, can change to median if needed)
-            y_bin = float(np.mean(y[idx]))
+            # Mean probability "between them" (across all bases between the first and last T)
+            y_bin = float(np.mean(y[left_i:right_i + 1]))
             y_vals.append(y_bin)
 
-            # Bin center for optional scatter
             centers.append((x_left + x_right) / 2.0)
 
-        # Convert to numpy
         edges = np.asarray(edges, dtype=float)
         y_vals = np.asarray(y_vals, dtype=float)
         centers = np.asarray(centers, dtype=float)
 
-        # Can produce duplicates, so we enforce this safely
         if len(edges) < 2 or len(y_vals) < 1:
             continue
 
-        # If edges length doesn't match y_vals+1, rebuild edges from chunk boundaries precisely
-        if len(edges) != len(y_vals) + 1:
-            edges = [x[idx_chunks[0][0]]]
-            for idx in idx_chunks:
-                if idx.size == 0:
-                    continue
-                edges.append(x[idx[-1]])
-            edges = np.asarray(edges, dtype=float)
-
-        # If we still have mismatch (rare), skip safely
-        if len(edges) != len(y_vals) + 1:
-            continue
-
-        # Ensure non-decreasing edges
+        # Enforce non-decreasing edges
         edges = np.maximum.accumulate(edges)
 
         # Avoid a completely flat final edge equal to previous
         # Add a tiny epsilon so the last step is drawable
-        if edges[-1] == edges[-2]:
+        if len(edges) >= 2 and edges[-1] == edges[-2]:
             edges[-1] = edges[-1] + 1e-9
+
+        # If mismatch occurs, skip safely (should be rare with this construction)
+        if len(edges) != len(y_vals) + 1:
+            continue
 
         fig, ax = plt.subplots(figsize=(16, 4))
 
         # Optional scatter
         if show_scatter:
             ax.scatter(x, y, s=1, color="black", alpha=0.3)
-
 
         # Stair style plot
         ax.stairs(y_vals, edges, linewidth=2, color="black", fill=False)
