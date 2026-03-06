@@ -21,31 +21,29 @@ import plotting.S_Phase.genome_browser.S_phase_chromosome_plotting_unsmoothed as
 # to get the correct path
 load_dotenv(dotenv_path=REPO_ROOT / "env" / ".env")
 
-
-def get_output_dir():
-    """
-    This gets the output directory for where we want to put our new plots. This will
-    be given in the env/e.env
-    """
-    output_dir = os.getenv("BRDU_S_UNSMOOTHED_PCT75")
-    if not output_dir:
-        output_dir = os.path.join(os.getcwd(), "output", "S_Phase_pct_10kb")
-    os.makedirs(output_dir, exist_ok=True)
-    return Path(output_dir)
-
-
 def load_S_pct_10kb():
     """
     This method finds the path for the dataset we are using. If the dataset is not found
     it warns the user to put it in the env/.env. If the path does not exist it will warn
     the user that the path does not exist.
     """
-    S_10kb_pct = os.getenv("BRDU_S_10KB_75_PCT_THRESHOLD_INPUT")
+    S_10kb_pct = os.getenv("BRDU_S_PCT")
     if not S_10kb_pct:
-        raise ValueError("BRDU_S_10KB_75_PCT_THRESHOLD_INPUT must be set in the env/.env")
+        raise ValueError("BRDU_S_PCT must be set in the env/.env")
     if not os.path.exists(S_10kb_pct):
-        raise FileNotFoundError(f"BRDU_S_10KB_75_PCT_THRESHOLD_INPUT not found at {S_10kb_pct}")
+        raise FileNotFoundError(f"BRDU_S_PCT not found at {S_10kb_pct}")
     return pd.read_csv(S_10kb_pct)
+
+def get_output_dir():
+    """
+    This gets the output directory for where we want to put our new plots. This will
+    be given in the env/e.env
+    """
+    output_dir = os.getenv("BRDU_PCT_OUTPUT_S_UNSMOOTHED")
+    if not output_dir:
+        output_dir = os.path.join(os.getcwd(), "output", "S_Phase_pct_10kb")
+    os.makedirs(output_dir, exist_ok=True)
+    return Path(output_dir)
 
 
 # Input come fron env/.env

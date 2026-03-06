@@ -19,7 +19,7 @@ def get_export_dir() -> str:
     Determine the output directory for saving BrdU%'s.
      The output directory is set in our .env.
     """
-    output_dir = os.getenv("BRDU_PCT_OUTPUT_M_THRESHOLD")
+    output_dir = os.getenv("BRDU_PCT_OUTPUT_M_CSV")
     if not output_dir:
         output_dir = os.path.join(os.getcwd(), "output", "BrdU_pct")
     os.makedirs(output_dir, exist_ok=True)

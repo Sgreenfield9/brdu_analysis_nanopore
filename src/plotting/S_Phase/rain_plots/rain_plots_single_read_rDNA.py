@@ -113,8 +113,11 @@ def plot_rainplots_per_read():
     df["mod_base"] = df["mod_base"].astype(str).str.upper()
 
     # T-based sliding window controls
-    t_window = 100   # Meaning we will grab 100 T's no matter how many bases it is
-    t_step = 25      # Slide by this many T's each bin (set to 1 for maximum detail)
+    window_T = 50    # Sliding window size in number of T bases
+    step_T = 20      # Slide by this many T's each bin (set to 1 for maximum detail)
+    # Require at least one rolling window to have >= 0.05 mean BrdU probability.
+    # This prevents flat plots where all rolling windows are ~0.
+    min_mean_peak = 0.05
 
     # First: compute T counts per read, then filter to reads that pass threshold
     per_read = (
@@ -123,6 +126,9 @@ def plot_rainplots_per_read():
               T_count=("mod_base", lambda s: (s == "T").sum())
           )
     )
+
+    # Ensure reads have enough T's to form at least one window
+    min_T_count = max(min_T_count, window_T)
 
     eligible_ids = per_read.loc[per_read["T_count"] >= min_T_count, "read_id"].to_numpy()
 
@@ -134,8 +140,8 @@ def plot_rainplots_per_read():
 
     # Then: filter those eligible reads so we do not get flat lines
     # points_per_bin = 25  # Can change to 100 for more detail, 500 for smoother plots
-    min_q_spread = 0.20  # was 0.30
-    min_bin_range = 0.12  # as 0.20
+    min_mean_spread = 0.10  # How much the rolling signal should vary between 5th and 95th percentiles
+    min_mean_range = 0.10   # Minimum overall range of rolling signal
 
     df_eligible = df[df["read_id"].isin(eligible_ids)]
     var_keep_ids = []
@@ -143,38 +149,40 @@ def plot_rainplots_per_read():
     for rid, sub in df_eligible.groupby("read_id", sort=False):
         sub = sub.sort_values("start", kind="mergesort")
 
-        y = sub["mod_prob"].to_numpy(dtype=float)
-        bases = sub["mod_base"].to_numpy(dtype=object)
+        sub_T = sub[sub["mod_base"] == "T"]
 
-        if y.size < 10:
+        if len(sub_T) < window_T:
             continue
 
-        q05 = float(np.quantile(y, 0.05))
-        q95 = float(np.quantile(y, 0.95))
-        q_spread = q95 - q05
-        if q_spread < min_q_spread:
+        yT = sub_T["mod_prob"].to_numpy(dtype=float)
+
+        # Efficient rolling mean using cumulative sum:
+        # window_sum[i] = sum(yT[i : i+window_T])
+        csum = np.cumsum(yT, dtype=np.float64)
+        window_sum = csum[window_T - 1:] - np.concatenate(([0.0], csum[:-window_T]))
+
+        # Convert rolling sum into rolling mean (0 to 1)
+        prop = window_sum / float(window_T)
+
+        # Need at least 2 windows to have a meaningful "stairs"
+        if prop.size < 2:
             continue
 
-        # Variability check using the same T-sliding bins we will plot
-        t_idx = np.flatnonzero(bases == "T")
-        if t_idx.size < t_window:
+        # If no rolling window ever reaches the minimum mean threshold,
+        # this read will look basically flat at 0, so we skip it.
+        if float(prop.max()) < min_mean_peak:
             continue
 
-        y_vals_tmp = []
-        for j in range(0, t_idx.size - t_window + 1, t_step):
-            left_i = int(t_idx[j])
-            right_i = int(t_idx[j + t_window - 1])
-            if right_i <= left_i:
-                continue
-            y_vals_tmp.append(float(np.mean(y[left_i:right_i + 1])))
-
-        if len(y_vals_tmp) < 2:
+        # Variability checks on the rolling proportion signal
+        q05 = float(np.quantile(prop, 0.05))
+        q95 = float(np.quantile(prop, 0.95))
+        prop_spread = q95 - q05
+        if prop_spread < min_mean_spread:
             continue
 
-        bin_range = max(y_vals_tmp) - min(y_vals_tmp)
-        if bin_range < min_bin_range:
+        prop_range = float(prop.max() - prop.min())
+        if prop_range < min_mean_range:
             continue
-        # =========================
 
         var_keep_ids.append(rid)
 
@@ -183,7 +191,7 @@ def plot_rainplots_per_read():
     if eligible_ids.size == 0:
         raise ValueError(
             f"No reads passed the variability filter. "
-            f"Try lowering min_q_spread={min_q_spread} or min_bin_range={min_bin_range}."
+            f"Try lowering min_mean_spread={min_mean_spread} or min_mean_range={min_mean_range}."
         )
 
     # Restrict to reads that have RFB coordinates
@@ -244,55 +252,56 @@ def plot_rainplots_per_read():
         if n < 2:
             continue
 
-        # Build bins using sliding windows of T's
-        t_idx = np.flatnonzero(bases == "T")
-        if t_idx.size < t_window:
-            # Not enough T's for the requested window, skip safely
+        # Filter to T bases only (these are the bases we slide over)
+        sub_T = sub[sub["mod_base"] == "T"]
+
+        # If we have fewer than 100 T's, we cannot compute any windows
+        if len(sub_T) < window_T:
             continue
 
-        edges = [x[0]]
-        y_vals = []
-        centers = []
+        # X positions for T bases in kb relative to read start
+        xT = (sub_T["start"].to_numpy() - read_start) / 1000.0
 
-        for j in range(0, t_idx.size - t_window + 1, t_step):
-            left_i = int(t_idx[j])
-            right_i = int(t_idx[j + t_window - 1])
+        # BrdU probabilities for T bases only
+        yT = sub_T["mod_prob"].to_numpy(dtype=float)
 
-            # Convert to x-range (kb) for this window
-            x_left = float(x[left_i])
-            x_right = float(x[right_i])
+        # Rolling sum over 100 T's using cumulative sum
+        csum = np.cumsum(yT, dtype=np.float64)
+        window_sum = csum[window_T - 1:] - np.concatenate(([0.0], csum[:-window_T]))
 
-            # If for some reason positions collapse, skip that window
-            if x_right < x_left:
-                continue
+        # Rolling mean (this is the "stair height")
+        prop_above = window_sum / float(window_T)
 
-            # Make edges non-decreasing for stairs
-            edges.append(x_right)
-
-            # Mean probability "between them" (across all bases between the first and last T)
-            y_bin = float(np.mean(y[left_i:right_i + 1]))
-            y_vals.append(y_bin)
-
-            centers.append((x_left + x_right) / 2.0)
-
-        edges = np.asarray(edges, dtype=float)
-        y_vals = np.asarray(y_vals, dtype=float)
-        centers = np.asarray(centers, dtype=float)
-
-        if len(edges) < 2 or len(y_vals) < 1:
+        # Safety check: skip plotting if the rolling signal never reaches our minimum peak
+        if float(np.max(prop_above)) < min_mean_peak:
             continue
 
-        # Enforce non-decreasing edges
+        # Choose which windows we keep based on step_T
+        # step_T=1 means every possible window; step_T=10 means every 10th window, etc.
+        start_idx = np.arange(0, prop_above.size, step_T, dtype=int)
+        prop_above = prop_above[start_idx]
+
+        # We define step edges by the starting T position of each rolling window.
+        # Stairs expects consecutive edges, so we treat each window-start as the next "bin".
+        edges = xT[start_idx].astype(float)
+
+        # Safety checks
+        if prop_above.size < 1 or edges.size < 1:
+            continue
+
+        # stairs needs edges length = len(values) + 1
+        if edges.size == 1:
+            # If there is only one window, make a tiny drawable interval
+            edges = np.array([edges[0], edges[0] + 1e-6], dtype=float)
+        else:
+            # Extend one last edge so the final step has a visible width
+            last_step = edges[-1] - edges[-2]
+            if last_step <= 0:
+                last_step = 1e-6
+            edges = np.concatenate([edges, [edges[-1] + last_step]])
+
+        # Ensure non-decreasing edges
         edges = np.maximum.accumulate(edges)
-
-        # Avoid a completely flat final edge equal to previous
-        # Add a tiny epsilon so the last step is drawable
-        if len(edges) >= 2 and edges[-1] == edges[-2]:
-            edges[-1] = edges[-1] + 1e-9
-
-        # If mismatch occurs, skip safely (should be rare with this construction)
-        if len(edges) != len(y_vals) + 1:
-            continue
 
         fig, ax = plt.subplots(figsize=(16, 4))
 
@@ -328,7 +337,7 @@ def plot_rainplots_per_read():
                     ax.axvline(rfb_end, color="red", linestyle="--", linewidth=1.5)
 
         # Stair style plot
-        ax.stairs(y_vals, edges, linewidth=2, color="black", fill=False)
+        ax.stairs(prop_above, edges, linewidth=2, color="black", fill=False)
 
         # 50% BrdU probability reference line
         ax.axhline(
@@ -341,7 +350,7 @@ def plot_rainplots_per_read():
 
         ax.set_ylim(0, 1)
         ax.set_xlabel("Position within read (kb)")
-        ax.set_ylabel("BrdU probability (0–1)")
+        ax.set_ylabel(f"Mean BrdU probability\n(rolling window = {window_T} T bases)")
         ax.set_title(f"S_Phase Rain Plot - {rid}\nChromosome: {chr_label}")
 
         outpath = os.path.join(outdir, f"rainplot_{i:03d}_read_{i}.png")

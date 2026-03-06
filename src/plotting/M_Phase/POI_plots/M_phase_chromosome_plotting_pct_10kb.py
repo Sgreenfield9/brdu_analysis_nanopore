@@ -21,30 +21,30 @@ import plotting.M_Phase.genome_browser.M_phase_chromosome_plotting as m
 # to get the correct path
 load_dotenv(dotenv_path=REPO_ROOT / "env" / ".env")
 
-def get_output_dir():
-    """
-    This gets the output directory for where we want to put our new plots. This will
-    be given in the env/e.env
-    """
-    output_dir = os.getenv("BRDU_M_PCT_10KB_OUTPUT_THRESHOLD")
-    if not output_dir:
-        output_dir = os.path.join(os.getcwd(), "output", "M_Phase_pct_10kb")
-    os.makedirs(output_dir, exist_ok=True)
-    return Path(output_dir)
-
-
 def load_M_pct_10kb():
     """
     This method finds the path for the dataset we are using. If the dataset is not found
     it warns the user to put it in the env/.env. If the path does not exist it will warn
     the user that the path does not exist.
     """
-    M_10kb_pct = os.getenv("BRDU_M_10KB_75_PCT_THRESHOLD_INPUT")
+    M_10kb_pct = os.getenv("BRDU_M_PCT")
     if not M_10kb_pct:
-        raise ValueError("BRDU_M_10KB_75_PCT_THRESHOLD_INPUT must be set in the env/.env")
+        raise ValueError("BRDU_M_PCT must be set in the env/.env")
     if not os.path.exists(M_10kb_pct):
-        raise FileNotFoundError(f"BRDU_M_10KB_75_PCT_THRESHOLD_INPUT not found at {M_10kb_pct}")
+        raise FileNotFoundError(f"BRDU_M_PCT not found at {M_10kb_pct}")
     return pd.read_csv(M_10kb_pct)
+
+
+def get_output_dir():
+    """
+    This gets the output directory for where we want to put our new plots. This will
+    be given in the env/e.env
+    """
+    output_dir = os.getenv("BRDU_PCT_OUTPUT_M")
+    if not output_dir:
+        output_dir = os.path.join(os.getcwd(), "output", "M_Phase_pct_10kb")
+    os.makedirs(output_dir, exist_ok=True)
+    return Path(output_dir)
 
 
 # Input come fron env/.env
